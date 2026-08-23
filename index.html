@@ -348,6 +348,38 @@ textarea{resize:vertical; min-height:60px;}
 .star-ro{font-size:12px; color:var(--line);}
 .star-ro.filled{color:#8A4B0F;}
 
+/* ---------- reports ---------- */
+.report-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-top:6px;}
+.report-card{background:var(--paper); border:1px solid var(--line); border-radius:3px; padding:14px;}
+.report-card.highlight{background:var(--cream-deep); border-color:var(--gold-deep);}
+.rc-label{font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-faint);}
+.rc-value{font-family:'Cormorant Garamond',serif; font-size:22px; margin-top:4px;}
+.rc-value.pos{color:#3E6B4A;}
+.rc-value.neg{color:var(--danger);}
+.chart-box{background:var(--paper); border:1px solid var(--line); border-radius:3px; padding:16px; margin-top:6px;}
+.chart-row{display:flex; align-items:center; gap:10px; margin-bottom:12px;}
+.chart-row:last-child{margin-bottom:0;}
+.chart-label{width:70px; font-size:11px; flex:none;}
+.chart-track{flex:1; background:var(--cream); border-radius:2px; height:16px; overflow:hidden;}
+.chart-fill{height:100%; border-radius:2px;}
+.chart-fill.pos{background:#3E6B4A;}
+.chart-fill.neg{background:var(--danger);}
+.chart-value{width:70px; text-align:right; font-size:11px; flex:none;}
+.report-table{background:var(--paper); border:1px solid var(--line); border-radius:3px; overflow:hidden; margin-top:6px;}
+.rt-row{display:grid; grid-template-columns:1.4fr 1fr 1fr 1fr 1fr 1fr; gap:4px; padding:9px 12px; font-size:11px; border-bottom:1px solid var(--line-soft);}
+.rt-row.rt-4col{grid-template-columns:1.6fr 1fr 1fr 1fr;}
+.rt-row:last-child{border-bottom:none;}
+.rt-row.rt-head{background:var(--cream); font-weight:600; text-transform:uppercase; font-size:9px; letter-spacing:.04em; color:var(--ink-faint);}
+.rt-row .pos{color:#3E6B4A;}
+.rt-row .neg{color:var(--danger);}
+.piece-summary.sold{opacity:.75;}
+.piece-summary .thumb{position:relative;}
+.order-badge{
+  position:absolute; bottom:8px; right:8px; width:26px; height:26px; border-radius:50%;
+  background:var(--gold-deep); color:#fff; font-family:'Cormorant Garamond',serif; font-size:14px;
+  display:flex; align-items:center; justify-content:center; font-weight:600; box-shadow:0 2px 6px rgba(0,0,0,.25);
+}
+
 /* ---------- agenda ---------- */
 .subtabs{display:flex; gap:2px; margin-bottom:20px; border-bottom:1px solid var(--line);}
 .subtab{border:none; background:none; padding:10px 4px; margin-right:22px; color:var(--ink-faint); font-size:13px; letter-spacing:.05em; text-transform:uppercase; border-bottom:2px solid transparent; font-weight:500;}
@@ -1036,31 +1068,51 @@ function renderSelBar(){
   bar.classList.add('show');
   bar.innerHTML = `
     <span class="n">${n} selected${n!==25?` <span style="color:#D9C49A; font-size:9px;">(25 ideal)</span>`:''}</span>
-    <button class="btn" id="btn-create-coll">Create</button>
+    <button class="btn" id="btn-create-coll">Add</button>
     <button class="clear" id="btn-clear-sel">✕</button>
   `;
   bar.querySelector('#btn-create-coll').onclick = openCreateCollectionModal;
   bar.querySelector('#btn-clear-sel').onclick = ()=>{ STATE.selection.clear(); renderCatalogResults(); renderSelBar(); };
 }
 
-/* ---------- create collection modal ---------- */
+/* ---------- create/add-to collection modal ---------- */
 function openCreateCollectionModal(){
   const ids = [...STATE.selection];
   const root = document.getElementById('modal-root');
+  const hasExisting = STATE.collections.length > 0;
   root.innerHTML = `
     <div class="overlay show" id="ov">
       <div class="modal">
-        <div class="modal-head"><h3>New collection</h3><button class="iconbtn" id="close-modal">✕</button></div>
+        <div class="modal-head"><h3>Add ${ids.length} piece${ids.length!==1?'s':''}</h3><button class="iconbtn" id="close-modal">✕</button></div>
         <div class="modal-body">
+          ${hasExisting ? `
+          <div class="field">
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+              <input type="radio" name="mode" value="existing" id="mode-existing" checked style="width:auto;">
+              Add to an existing collection
+            </label>
+            <select id="existing-coll-select" style="margin-top:8px;">
+              ${STATE.collections.slice().reverse().map(c=>`<option value="${c.id}">${c.name} (${c.pieces.length} pieces)</option>`).join('')}
+            </select>
+          </div>
+          <div class="field">
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+              <input type="radio" name="mode" value="new" id="mode-new" style="width:auto;">
+              Create a new collection
+            </label>
+            <input type="text" id="coll-name" placeholder="E.g.: Golden Autumn Collection" disabled style="margin-top:8px;">
+          </div>
+          ` : `
           <div class="field">
             <label>Collection name</label>
             <input type="text" id="coll-name" placeholder="E.g.: Golden Autumn Collection">
           </div>
-          <p class="small-note">${ids.length} piece${ids.length!==1?'s':''} will be added to this collection.</p>
+          `}
+          <p class="small-note">${ids.length} piece${ids.length!==1?'s':''} will be added.</p>
         </div>
         <div class="modal-foot">
           <button class="btn ghost" id="cancel-modal">Cancel</button>
-          <button class="btn" id="confirm-coll">Create collection</button>
+          <button class="btn" id="confirm-coll">${hasExisting ? 'Add' : 'Create collection'}</button>
         </div>
       </div>
     </div>`;
@@ -1068,31 +1120,60 @@ function openCreateCollectionModal(){
   root.querySelector('#close-modal').onclick = close;
   root.querySelector('#cancel-modal').onclick = close;
   root.querySelector('#ov').addEventListener('click', (e)=>{ if(e.target.id==='ov') close(); });
+
+  const newPieceStub = (id) => ({
+    pieceId: id,
+    online_min:'', online_max:'', fisico_min:'', fisico_max:'',
+    nivel_min:'', nivel_max:'', preco_pago:'', valor_venda:'',
+    garantia:'', documents:[],
+    sold:false, sold_date:'', sold_qty:'',
+    demand_notes:'',
+    hipoalergenico: (STATE.pieces.find(p=>p.id===id)||{}).materiais || ''
+  });
+
+  if(hasExisting){
+    const nameInput = root.querySelector('#coll-name');
+    const select = root.querySelector('#existing-coll-select');
+    root.querySelectorAll('input[name="mode"]').forEach(r=>{
+      r.addEventListener('change', ()=>{
+        const isNew = root.querySelector('#mode-new').checked;
+        nameInput.disabled = !isNew;
+        select.disabled = isNew;
+      });
+    });
+  }
+
   root.querySelector('#confirm-coll').onclick = ()=>{
-    const name = root.querySelector('#coll-name').value.trim();
-    if(!name){ toast('Give the collection a name.'); return; }
-    const coll = {
-      id: uid(),
-      name,
-      createdAt: new Date().toISOString(),
-      pieces: ids.map(id => ({
-        pieceId: id,
-        online_min:'', online_max:'',
-        fisico_min:'', fisico_max:'',
-        nivel_min:'', nivel_max:'',
-        preco_pago:'', valor_venda:'',
-        garantia:'',
-        hipoalergenico: (STATE.pieces.find(p=>p.id===id)||{}).materiais || ''
-      }))
-    };
-    STATE.collections.push(coll);
-    saveCollections();
-    STATE.selection.clear();
-    close();
-    toast('Collection created successfully.');
-    document.querySelector('.tab[data-tab="colecoes"]').click();
-    STATE.currentCollectionId = coll.id;
-    renderColecoes();
+    const addNew = !hasExisting || root.querySelector('#mode-new').checked;
+    if(addNew){
+      const name = root.querySelector('#coll-name').value.trim();
+      if(!name){ toast('Give the collection a name.'); return; }
+      const coll = { id: uid(), name, createdAt: new Date().toISOString(), pieces: ids.map(newPieceStub) };
+      STATE.collections.push(coll);
+      saveCollections();
+      STATE.selection.clear();
+      close();
+      toast('Collection created successfully.');
+      document.querySelector('.tab[data-tab="colecoes"]').click();
+      STATE.currentCollectionId = coll.id;
+      renderColecoes();
+    } else {
+      const collId = root.querySelector('#existing-coll-select').value;
+      const coll = STATE.collections.find(c=>c.id===collId);
+      if(!coll) return;
+      const existingIds = new Set(coll.pieces.map(p=>p.pieceId));
+      let addedCount = 0;
+      ids.forEach(id=>{
+        if(!existingIds.has(id)){ coll.pieces.push(newPieceStub(id)); addedCount++; }
+      });
+      saveCollections();
+      STATE.selection.clear();
+      close();
+      toast(`${addedCount} piece${addedCount!==1?'s':''} added to "${coll.name}".`);
+      document.querySelector('.tab[data-tab="colecoes"]').click();
+      STATE.currentCollectionId = coll.id;
+      renderColecoes();
+    }
   };
 }
 
@@ -1332,6 +1413,7 @@ function collCardHTML(c){
 function renderCollectionDetail(el, collId){
   const c = STATE.collections.find(x=>x.id===collId);
   if(!c){ STATE.currentCollectionId = null; renderColecoes(); return; }
+  if(!STATE.collSub) STATE.collSub = 'pieces';
 
   el.innerHTML = `
     <div class="panel-head">
@@ -1347,24 +1429,19 @@ function renderCollectionDetail(el, collId){
     </div>
     ${tabsBarHTML()}
 
-    <button class="legend-toggle" id="toggle-legend" style="margin-bottom:10px;">Show level legend ▾</button>
-    <div class="legend-box" id="legend-box" style="display:none;">
-      ${LEVEL_ORDER.map(lv=>`<div class="legend-row"><div><span class="lvl" data-lvl="${lv}">${LEVELS[lv].label}</span><div style="font-size:11px; color:var(--ink-faint); margin-top:4px;">${LEVELS[lv].sub}</div></div><div class="lname">${LEVELS[lv].desc}</div></div>`).join('')}
+    <div class="subtabs">
+      <button class="subtab ${STATE.collSub==='pieces'?'active':''}" data-sub="pieces">Pieces</button>
+      <button class="subtab ${STATE.collSub==='report'?'active':''}" data-sub="report">Report</button>
     </div>
 
-    <div class="divider"><div class="diamond"></div></div>
-
-    <div id="coll-pieces"></div>
+    <div id="coll-body"></div>
   `;
 
   el.querySelector('#back-colls').onclick = ()=>{ STATE.currentCollectionId = null; renderColecoes(); };
   bindTabsBar(el);
-  el.querySelector('#toggle-legend').onclick = (e)=>{
-    const box = el.querySelector('#legend-box');
-    const show = box.style.display === 'none';
-    box.style.display = show ? 'block' : 'none';
-    e.target.textContent = show ? 'Hide level legend ▴' : 'Show level legend ▾';
-  };
+  el.querySelectorAll('.subtab').forEach(b=>{
+    b.onclick = ()=>{ STATE.collSub = b.dataset.sub; renderCollectionDetail(el, c.id); };
+  });
   el.querySelector('#edit-name').onclick = ()=>{
     customPrompt('New collection name', c.name, (name)=>{
       c.name = name; saveCollections(); renderColecoes();
@@ -1372,8 +1449,32 @@ function renderCollectionDetail(el, collId){
   };
   el.querySelector('#export-this-coll').onclick = ()=> exportCollectionCSV(c.id);
 
-  const wrap = el.querySelector('#coll-pieces');
-  wrap.innerHTML = c.pieces.map(cp => collPieceEditHTML(c, cp)).join('');
+  const body = el.querySelector('#coll-body');
+  if(STATE.collSub === 'report'){
+    renderCollectionReport(body, c, el);
+  } else {
+    renderCollectionPiecesList(body, c, el);
+  }
+}
+
+function renderCollectionPiecesList(body, c, el){
+  body.innerHTML = `
+    <button class="legend-toggle" id="toggle-legend" style="margin-bottom:10px;">Show level legend ▾</button>
+    <div class="legend-box" id="legend-box" style="display:none;">
+      ${LEVEL_ORDER.map(lv=>`<div class="legend-row"><div><span class="lvl" data-lvl="${lv}">${LEVELS[lv].label}</span><div style="font-size:11px; color:var(--ink-faint); margin-top:4px;">${LEVELS[lv].sub}</div></div><div class="lname">${LEVELS[lv].desc}</div></div>`).join('')}
+    </div>
+    <div class="divider"><div class="diamond"></div></div>
+    <div id="coll-pieces"></div>
+  `;
+  body.querySelector('#toggle-legend').onclick = (e)=>{
+    const box = body.querySelector('#legend-box');
+    const show = box.style.display === 'none';
+    box.style.display = show ? 'block' : 'none';
+    e.target.textContent = show ? 'Hide level legend ▴' : 'Show level legend ▾';
+  };
+
+  const wrap = body.querySelector('#coll-pieces');
+  wrap.innerHTML = sortedByOrder(c.pieces).map(cp => collPieceEditHTML(c, cp)).join('');
 
   wrap.querySelectorAll('.edit-coll-piece').forEach(btn=>{
     btn.addEventListener('click', ()=> openCollPieceEditModal(c.id, btn.dataset.pieceId));
@@ -1389,14 +1490,168 @@ function renderCollectionDetail(el, collId){
   });
 }
 
+/* ================= COLLECTION REPORT ================= */
+function renderCollectionReport(body, c, el){
+  if(!c.costs) c.costs = { materials:'', fuel:'', general:'' };
+
+  const rows = c.pieces.map(cp=>{
+    const p = STATE.pieces.find(pp=>pp.id===cp.pieceId);
+    return { cp, p };
+  }).filter(r=>r.p);
+
+  const paid = (cp) => parseFloat(cp.preco_pago)||0;
+  const saleVal = (cp) => parseFloat(cp.valor_venda)||0;
+  const qty = (cp) => parseInt(cp.sold_qty,10) || 1;
+
+  const soldRows = rows.filter(r=>r.cp.sold);
+  const pendingRows = rows.filter(r=>!r.cp.sold);
+
+  const totalPaid = rows.reduce((s,r)=> s + paid(r.cp), 0);
+  const totalRevenue = soldRows.reduce((s,r)=> s + saleVal(r.cp)*qty(r.cp), 0);
+  const totalPending = pendingRows.reduce((s,r)=> s + saleVal(r.cp), 0);
+  const extraCosts = (parseFloat(c.costs.materials)||0) + (parseFloat(c.costs.fuel)||0) + (parseFloat(c.costs.general)||0);
+  const netProfit = totalRevenue - totalPaid - extraCosts;
+
+  const daysBetween = (d1,d2) => Math.round((new Date(d2) - new Date(d1)) / 86400000);
+  const sellTimes = soldRows.filter(r=>r.cp.sold_date).map(r=> daysBetween(c.createdAt, r.cp.sold_date)).filter(d=>d>=0);
+  const avgDays = sellTimes.length ? Math.round(sellTimes.reduce((a,b)=>a+b,0)/sellTimes.length) : null;
+
+  const byLevel = {};
+  LEVEL_ORDER.forEach(lv => byLevel[lv] = { sold:0, pending:0, paid:0, revenue:0 });
+  rows.forEach(r=>{
+    const lv = r.p.nivel;
+    if(!byLevel[lv]) byLevel[lv] = { sold:0, pending:0, paid:0, revenue:0 };
+    byLevel[lv].paid += paid(r.cp);
+    if(r.cp.sold){ byLevel[lv].sold += qty(r.cp); byLevel[lv].revenue += saleVal(r.cp)*qty(r.cp); }
+    else byLevel[lv].pending += 1;
+  });
+
+  const bySupplier = {};
+  rows.forEach(r=>{
+    const s = r.p.fornecedor || 'Not identified';
+    if(!bySupplier[s]) bySupplier[s] = { sold:0, pending:0, revenue:0 };
+    if(r.cp.sold){ bySupplier[s].sold += qty(r.cp); bySupplier[s].revenue += saleVal(r.cp)*qty(r.cp); }
+    else bySupplier[s].pending += 1;
+  });
+
+  // sales by location, scoped to THIS collection's sold pieces
+  const byLocation = {};
+  soldRows.forEach(r=>{
+    const loc = (r.cp.sold_location||'').trim() || 'Not specified';
+    if(!byLocation[loc]) byLocation[loc] = 0;
+    byLocation[loc] += qty(r.cp);
+  });
+  const locationEntries = Object.entries(byLocation).sort((a,b)=> b[1]-a[1]);
+  const maxLoc = Math.max(1, ...locationEntries.map(([,v])=>v));
+  const locationChartBars = locationEntries.map(([loc,v])=>{
+    const pct = Math.max(4, Math.round((v/maxLoc)*100));
+    return `<div class="chart-row">
+      <div class="chart-label" style="width:110px;">${loc.length>18?loc.slice(0,18)+'…':loc}</div>
+      <div class="chart-track"><div class="chart-fill pos" style="width:${pct}%;"></div></div>
+      <div class="chart-value">${v} sold</div>
+    </div>`;
+  }).join('');
+
+  // top clients scoped to THIS collection (matches "collectionId::pieceId" keys)
+  const clientCounts = {};
+  STATE.clients.forEach(cl=>{
+    const count = (cl.pecas||[]).filter(a=>a.key && a.key.startsWith(c.id+'::')).length;
+    if(count>0) clientCounts[cl.nome] = count;
+  });
+  const clientEntries = Object.entries(clientCounts).sort((a,b)=> b[1]-a[1]);
+  const maxClient = Math.max(1, ...clientEntries.map(([,v])=>v));
+  const clientChartBars = clientEntries.map(([nome,v])=>{
+    const pct = Math.max(4, Math.round((v/maxClient)*100));
+    return `<div class="chart-row">
+      <div class="chart-label" style="width:110px;">${nome}</div>
+      <div class="chart-track"><div class="chart-fill pos" style="width:${pct}%;"></div></div>
+      <div class="chart-value">${v} piece${v!==1?'s':''}</div>
+    </div>`;
+  }).join('');
+
+  const maxLevelVal = Math.max(1, ...LEVEL_ORDER.map(lv => Math.abs(byLevel[lv].revenue - byLevel[lv].paid)));
+  const chartBars = LEVEL_ORDER.filter(lv => byLevel[lv].sold>0 || byLevel[lv].pending>0).map(lv=>{
+    const margin = byLevel[lv].revenue - byLevel[lv].paid;
+    const pct = Math.max(4, Math.round((Math.abs(margin)/maxLevelVal)*100));
+    const positive = margin >= 0;
+    return `<div class="chart-row">
+      <div class="chart-label">${LEVELS[lv].label}</div>
+      <div class="chart-track"><div class="chart-fill ${positive?'pos':'neg'}" style="width:${pct}%;"></div></div>
+      <div class="chart-value">${fmtMoney(margin)}</div>
+    </div>`;
+  }).join('');
+
+  body.innerHTML = `
+    <div class="legend-box" style="margin-bottom:16px;">
+      <div class="mini-label" style="margin-top:0;">Extra costs for this collection</div>
+      <div class="row2">
+        <div><label>Materials</label><input type="number" step="0.01" id="cost-materials" value="${c.costs.materials}"></div>
+        <div><label>Fuel / transport</label><input type="number" step="0.01" id="cost-fuel" value="${c.costs.fuel}"></div>
+      </div>
+      <div class="field" style="max-width:240px;"><label>General work costs</label><input type="number" step="0.01" id="cost-general" value="${c.costs.general}"></div>
+      <button class="btn ghost small" id="save-costs" style="margin-top:4px;">Save costs</button>
+    </div>
+
+    <div class="report-grid">
+      <div class="report-card"><div class="rc-label">Revenue (sold)</div><div class="rc-value">${fmtMoney(totalRevenue)}</div></div>
+      <div class="report-card"><div class="rc-label">Paid (all pieces)</div><div class="rc-value">${fmtMoney(totalPaid)}</div></div>
+      <div class="report-card"><div class="rc-label">Extra costs</div><div class="rc-value">${fmtMoney(extraCosts)}</div></div>
+      <div class="report-card highlight"><div class="rc-label">Net profit</div><div class="rc-value ${netProfit>=0?'pos':'neg'}">${fmtMoney(netProfit)}</div></div>
+      <div class="report-card"><div class="rc-label">Pending (not sold yet)</div><div class="rc-value">${fmtMoney(totalPending)}</div></div>
+      <div class="report-card"><div class="rc-label">Avg. time to sell</div><div class="rc-value">${avgDays!==null ? avgDays+'d' : '—'}</div></div>
+      <div class="report-card"><div class="rc-label">Sold / Total</div><div class="rc-value">${soldRows.reduce((s,r)=>s+qty(r.cp),0)} / ${rows.length}</div></div>
+    </div>
+
+    <div class="mini-label" style="margin-top:20px;">Margin by level (revenue − paid)</div>
+    <div class="chart-box">${chartBars || '<p class="small-note">No data yet.</p>'}</div>
+
+    <div class="mini-label" style="margin-top:20px;">Breakdown by level</div>
+    <div class="report-table">
+      <div class="rt-row rt-head"><div>Level</div><div>Sold</div><div>Pending</div><div>Paid</div><div>Revenue</div><div>Margin</div></div>
+      ${LEVEL_ORDER.filter(lv=>byLevel[lv].sold>0||byLevel[lv].pending>0).map(lv=>{
+        const b = byLevel[lv];
+        const margin = b.revenue - b.paid;
+        return `<div class="rt-row"><div>${LEVELS[lv].label}</div><div>${b.sold}</div><div>${b.pending}</div><div>${fmtMoney(b.paid)}</div><div>${fmtMoney(b.revenue)}</div><div class="${margin>=0?'pos':'neg'}">${fmtMoney(margin)}</div></div>`;
+      }).join('') || '<div class="rt-row"><div class="small-note">No data yet.</div></div>'}
+    </div>
+
+    <div class="mini-label" style="margin-top:20px;">Breakdown by supplier</div>
+    <div class="report-table">
+      <div class="rt-row rt-head rt-4col"><div>Supplier</div><div>Sold</div><div>Pending</div><div>Revenue</div></div>
+      ${Object.entries(bySupplier).map(([s,b])=>`<div class="rt-row rt-4col"><div>${s}</div><div>${b.sold}</div><div>${b.pending}</div><div>${fmtMoney(b.revenue)}</div></div>`).join('') || '<div class="rt-row"><div class="small-note">No data yet.</div></div>'}
+    </div>
+
+    <div class="mini-label" style="margin-top:20px;">Sales by location</div>
+    <p class="small-note" style="margin-bottom:8px;">Based on "Where was it sold?" logged on each sold piece in this collection.</p>
+    <div class="chart-box">
+      ${locationChartBars || '<p class="small-note">No sold pieces with a location logged yet.</p>'}
+    </div>
+
+    <div class="mini-label" style="margin-top:20px;">Top clients for this collection</div>
+    <p class="small-note" style="margin-bottom:8px;">Clients who acquired pieces from this specific collection.</p>
+    <div class="chart-box">
+      ${clientChartBars || '<p class="small-note">No pieces from this collection linked to clients yet.</p>'}
+    </div>
+  `;
+
+  body.querySelector('#save-costs').onclick = ()=>{
+    c.costs.materials = body.querySelector('#cost-materials').value;
+    c.costs.fuel = body.querySelector('#cost-fuel').value;
+    c.costs.general = body.querySelector('#cost-general').value;
+    saveCollections();
+    toast('Costs saved.');
+    renderCollectionDetail(el, c.id);
+  };
+}
+
 function collPieceEditHTML(c, cp){
   const p = STATE.pieces.find(pp=>pp.id===cp.pieceId);
   if(!p) return '';
   const img = p.img ? `<img src="${p.img}" alt="${p.nome}" loading="eager" decoding="sync">` : '';
   const rangeLine = (label, min, max) => (min || max) ? `<div class="kv"><b>${label}</b>${min?fmtMoney(min):'—'} a ${max?fmtMoney(max):'—'}</div>` : '';
   const garantiaTxt = cp.garantia==='sim' ? 'Yes' : cp.garantia==='nao' ? 'No' : '—';
-  return `<div class="piece-summary" data-piece-id="${p.id}">
-    <div class="thumb">${img}</div>
+  return `<div class="piece-summary ${cp.sold?'sold':''}" data-piece-id="${p.id}">
+    <div class="thumb">${img}${cp.sold?'<span class="status-pill on" style="position:absolute; top:8px; left:8px;">SOLD</span>':''}${cp.order?`<span class="order-badge">${cp.order}</span>`:''}</div>
     <div class="ps-body">
       <div class="name">${p.nome}</div>
       <div class="sub">Nº ${p.numero} · ${p.codigo} · ${p.fornecedor} · <span class="lvl" data-lvl="${p.nivel}" style="vertical-align:middle;">${LEVELS[p.nivel].label}</span></div>
@@ -1406,9 +1661,12 @@ function collPieceEditHTML(c, cp){
       ${rangeLine('Level range', cp.nivel_min, cp.nivel_max)}
       ${cp.preco_pago ? `<div class="kv"><b>Price paid</b>${fmtMoney(cp.preco_pago)}</div>` : ''}
       <div class="kv"><b>Sale value</b>${cp.valor_venda ? fmtMoney(cp.valor_venda) : '—'}</div>
+      ${cp.variants && cp.variants.length ? `<div class="kv"><b>Stock</b>${cp.variants.map(v=>`${v.label||'?'} (${v.qty||0})`).join(' · ')} — total ${cp.variants.reduce((s,v)=>s+(parseInt(v.qty,10)||0),0)}</div>` : ''}
+      ${cp.sold ? `<div class="kv"><b>Sold on</b>${cp.sold_date||'—'}${cp.sold_qty && cp.sold_qty!=='1' ? ` (x${cp.sold_qty})` : ''}</div>` : ''}
       <div class="kv"><b>Warranty</b>${garantiaTxt}</div>
       <div class="kv"><b>Documents</b>${(cp.documents||[]).length ? (cp.documents||[]).map(k => (DOCUMENT_TYPES.find(d=>d[0]===k)||[])[1]).filter(Boolean).join(' · ') : '—'}</div>
       <div class="kv"><b>Composition</b>${cp.hipoalergenico || p.materiais}</div>
+      ${cp.demand_notes ? `<div class="kv" style="color:var(--gold-deep);"><b>Demand noted</b>${cp.demand_notes}</div>` : ''}
       <div class="actions" style="margin-top:12px;">
         <button class="btn ghost small edit-coll-piece" data-piece-id="${p.id}">Edit</button>
         <button class="btn danger small remove-from-coll" data-remove-id="${p.id}">Remove</button>
@@ -1428,6 +1686,10 @@ function openCollPieceEditModal(collId, pieceId){
       <div class="modal wide">
         <div class="modal-head"><h3>${p.nome}</h3><button class="iconbtn" id="close-modal">✕</button></div>
         <div class="modal-body">
+          <div class="field" style="max-width:220px;">
+            <label>Catalog order (position in presentation)</label>
+            <input type="number" step="1" min="1" id="ce-order" value="${cp.order||''}" placeholder="E.g.: 3">
+          </div>
           <div class="mini-label" style="margin-top:0;">Price range · online market</div>
           <div class="row2">
             <div><label>Minimum</label><input type="number" step="0.01" id="ce-online_min" value="${cp.online_min||''}"></div>
@@ -1447,6 +1709,31 @@ function openCollPieceEditModal(collId, pieceId){
           <div class="row2">
             <div><label>Price paid</label><input type="number" step="0.01" id="ce-preco_pago" value="${cp.preco_pago||''}"></div>
             <div><label>Piece value (resale)</label><input type="number" step="0.01" id="ce-valor_venda" value="${cp.valor_venda||''}"></div>
+          </div>
+          <div class="mini-label">Stock by variant (color / stone)</div>
+          <p class="small-note" style="margin-bottom:8px;">If you have more than one unit of this piece in different colors or stones, list them here.</p>
+          <div id="ce-variants-list"></div>
+          <button class="btn ghost small" id="ce-add-variant" type="button" style="margin-top:6px;">+ Add variant</button>
+          <div class="kv" style="margin-top:8px;"><b>Total units</b><span id="ce-variants-total">${(cp.variants&&cp.variants.length ? cp.variants.reduce((s,v)=>s+(parseInt(v.qty,10)||0),0) : 1)}</span></div>
+          <div class="mini-label">Sale status</div>
+          <div class="field">
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+              <input type="checkbox" id="ce-sold" ${cp.sold?'checked':''} style="width:auto;">
+              This piece has been sold
+            </label>
+          </div>
+          <div class="row2" id="ce-sold-fields" style="${cp.sold?'':'opacity:.4; pointer-events:none;'}">
+            <div><label>Sale date</label><input type="date" id="ce-sold_date" value="${cp.sold_date||''}"></div>
+            <div><label>Quantity sold</label><input type="number" step="1" min="1" id="ce-sold_qty" value="${cp.sold_qty||'1'}"></div>
+          </div>
+          <div class="field" id="ce-sold-location-wrap" style="${cp.sold?'':'opacity:.4; pointer-events:none;'}">
+            <label>Where was it sold?</label>
+            <input type="text" id="ce-sold_location" value="${cp.sold_location||''}" placeholder="E.g.: Craft Fair Downtown, Instagram, Beauty Salon Maria">
+          </div>
+          <div class="mini-label">Demand / requests</div>
+          <div class="field">
+            <label>Did a client ask for more of this piece? (same or different color/model)</label>
+            <textarea id="ce-demand" rows="2" placeholder="E.g.: Client asked for the same model in gold">${cp.demand_notes||''}</textarea>
           </div>
           <div class="mini-label">Client portfolio</div>
           <div class="row2">
@@ -1481,6 +1768,44 @@ function openCollPieceEditModal(collId, pieceId){
   root.querySelector('#close-modal').onclick = close;
   root.querySelector('#cancel-modal').onclick = close;
   root.querySelector('#ov').addEventListener('click', (e)=>{ if(e.target.id==='ov') close(); });
+  root.querySelector('#ce-sold').addEventListener('change', (e)=>{
+    root.querySelector('#ce-sold-fields').style.cssText = e.target.checked ? '' : 'opacity:.4; pointer-events:none;';
+    root.querySelector('#ce-sold-location-wrap').style.cssText = e.target.checked ? '' : 'opacity:.4; pointer-events:none;';
+    if(e.target.checked && !root.querySelector('#ce-sold_date').value){
+      root.querySelector('#ce-sold_date').value = new Date().toISOString().slice(0,10);
+    }
+  });
+
+  let variants = cp.variants && cp.variants.length ? cp.variants.map(v=>({...v})) : [];
+  const variantsListEl = root.querySelector('#ce-variants-list');
+  const variantsTotalEl = root.querySelector('#ce-variants-total');
+  function renderVariants(){
+    variantsListEl.innerHTML = variants.map((v,i)=>`
+      <div class="row2" style="margin-top:6px; align-items:end;" data-vidx="${i}">
+        <div><label>Description</label><input type="text" class="v-label" value="${v.label||''}" placeholder="E.g.: Gold"></div>
+        <div style="display:flex; gap:6px; align-items:end;">
+          <div style="flex:1;"><label>Qty</label><input type="number" min="0" step="1" class="v-qty" value="${v.qty||''}"></div>
+          <button type="button" class="iconbtn v-remove" title="Remove" style="flex:none;">✕</button>
+        </div>
+      </div>`).join('');
+    variantsListEl.querySelectorAll('[data-vidx]').forEach(row=>{
+      const idx = parseInt(row.dataset.vidx,10);
+      row.querySelector('.v-label').addEventListener('input', (e)=>{ variants[idx].label = e.target.value; });
+      row.querySelector('.v-qty').addEventListener('input', (e)=>{ variants[idx].qty = e.target.value; updateTotal(); });
+      row.querySelector('.v-remove').addEventListener('click', ()=>{ variants.splice(idx,1); renderVariants(); updateTotal(); });
+    });
+  }
+  function updateTotal(){
+    const total = variants.length ? variants.reduce((s,v)=>s+(parseInt(v.qty,10)||0),0) : 1;
+    variantsTotalEl.textContent = total;
+  }
+  renderVariants();
+  root.querySelector('#ce-add-variant').addEventListener('click', ()=>{
+    variants.push({label:'', qty:'1'});
+    renderVariants();
+    updateTotal();
+  });
+
   const chosenDocs = new Set(cp.documents||[]);
   root.querySelectorAll('#ce-docs .opt').forEach(o=>{
     o.addEventListener('click', ()=>{
@@ -1502,6 +1827,13 @@ function openCollPieceEditModal(collId, pieceId){
     cp.garantia = root.querySelector('#ce-garantia').value;
     cp.documents = [...chosenDocs];
     cp.hipoalergenico = root.querySelector('#ce-hipoalergenico').value.trim();
+    cp.sold = root.querySelector('#ce-sold').checked;
+    cp.sold_date = root.querySelector('#ce-sold_date').value;
+    cp.sold_qty = root.querySelector('#ce-sold_qty').value;
+    cp.sold_location = root.querySelector('#ce-sold_location').value.trim();
+    cp.demand_notes = root.querySelector('#ce-demand').value.trim();
+    cp.variants = variants.filter(v=>v.label.trim()||v.qty);
+    cp.order = root.querySelector('#ce-order').value;
     saveCollections();
     close();
     toast('Piece updated.');
@@ -1575,8 +1907,17 @@ function folioCardHTML(cp){
   </div>`;
 }
 
+function sortedByOrder(pieces){
+  return pieces.map((cp,i)=>({cp,i})).sort((a,b)=>{
+    const oa = a.cp.order!==undefined && a.cp.order!=='' ? parseFloat(a.cp.order) : Infinity;
+    const ob = b.cp.order!==undefined && b.cp.order!=='' ? parseFloat(b.cp.order) : Infinity;
+    if(oa===ob) return a.i - b.i;
+    return oa - ob;
+  }).map(x=>x.cp);
+}
+
 function renderFolioGrid(c){
-  document.getElementById('folio-grid').innerHTML = c.pieces.map(folioCardHTML).join('');
+  document.getElementById('folio-grid').innerHTML = sortedByOrder(c.pieces).map(folioCardHTML).join('');
   requestAnimationFrame(squareThumbs);
 }
 
@@ -1724,7 +2065,7 @@ function openPresentMode(c){
           <img class="present-cover-logo" src="${logoSrc}" alt="Desperta">
           <div class="present-cover-name">${c.name}</div>
         </div>
-        <div class="folio-grid">${c.pieces.map(folioCardHTML).join('')}</div>
+        <div class="folio-grid">${sortedByOrder(c.pieces).map(folioCardHTML).join('')}</div>
       </div>
       <div class="present-share-bar">
         <button class="btn" id="btn-share-present">Share collection</button>
