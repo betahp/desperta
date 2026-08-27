@@ -202,7 +202,7 @@ textarea{resize:vertical; min-height:60px;}
 .piece-card:hover{border-color:var(--gold); box-shadow:var(--shadow); transform:translateY(-2px);}
 .piece-card.selected{border-color:var(--gold-deep); box-shadow:0 0 0 2px var(--gold-deep);}
 .piece-card .thumb{
-  width:100%; background:var(--cream-deep); position:relative; overflow:hidden;
+  width:100%; aspect-ratio:1/1; background:var(--cream-deep); position:relative; overflow:hidden;
 }
 .piece-card .thumb img{
   position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; display:block;
@@ -315,7 +315,7 @@ textarea{resize:vertical; min-height:60px;}
 @media(max-width:640px){.folio-grid{grid-template-columns:1fr;}}
 .present-body .folio-grid{padding:0 22px;}
 .folio-card{background:var(--paper); border:1px solid var(--gold-pale); position:relative;}
-.folio-card .fimg{width:100%; background:var(--cream-deep); position:relative; overflow:hidden;}
+.folio-card .fimg{width:100%; aspect-ratio:1/1; background:var(--cream-deep); position:relative; overflow:hidden;}
 .folio-card .fimg > img{position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; display:block;}
 .folio-card .fbody{padding:20px 20px 22px; text-align:center;}
 .folio-card .fserial{font-size:10px; letter-spacing:.16em; color:var(--gold); text-transform:uppercase;}
@@ -454,7 +454,18 @@ textarea{resize:vertical; min-height:60px;}
 @media print{
   .topbar,.toolbar,.selbar,.panel-head .btn,.present-close-btn,.present-share-bar{display:none !important;}
   body{background:#fff;}
-  .folio-card{break-inside:avoid; border-color:#ccc;}
+  body.presenting > *:not(#present-root){display:none !important;}
+  body.presenting{overflow:visible !important; height:auto !important;}
+  body.presenting .present-overlay{position:static !important; height:auto !important; overflow:visible !important; display:block !important;}
+  body.presenting .present-body{overflow:visible !important; height:auto !important;}
+  #present-root{overflow:visible !important; height:auto !important;}
+  html{height:auto !important;}
+  .folio-grid{display:block !important;}
+  .folio-card{
+    display:block !important; width:100% !important; max-width:420px; margin:0 auto 24px;
+    break-inside:avoid; page-break-inside:avoid; border-color:#ccc;
+  }
+  .folio-card .fimg{aspect-ratio:1/1 !important; height:auto !important;}
 }
 
 .small-note{font-size:11px; color:var(--ink-faint); margin-top:4px;}
@@ -696,6 +707,19 @@ async function fbFullResync(collectionName, array){
   }
 }
 
+function fbSaveOne(collectionName, item){
+  fbDb.collection(collectionName).doc(String(item.id)).set(item).catch(err=>{
+    console.error(collectionName + ' save failed', err);
+    if(typeof toast === 'function') toast('Could not save to the cloud. Check your connection.');
+  });
+}
+
+function fbDeleteOne(collectionName, id){
+  fbDb.collection(collectionName).doc(String(id)).delete().catch(err=>{
+    console.error(collectionName + ' delete failed', err);
+  });
+}
+
 async function fbUploadPieceImage(file, pieceId){
   const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
   const ref = fbStorage.ref().child(`piece-photos/${pieceId}.${ext}`);
@@ -771,10 +795,30 @@ const STATE = {
   agendaSub: 'clientes'
 };
 
-function saveCollections(){ Store.set('dp_collections', STATE.collections); fbFullResync('collections', STATE.collections); }
-function saveClients(){ Store.set('dp_clients', STATE.clients); fbFullResync('clients', STATE.clients); }
-function saveEvents(){ Store.set('dp_events', STATE.events); fbFullResync('events', STATE.events); }
-function saveSuppliers(){ Store.set('dp_suppliers', STATE.suppliers); fbFullResync('suppliers', STATE.suppliers); }
+function saveCollections(item, deletedId){
+  Store.set('dp_collections', STATE.collections);
+  if(item) fbSaveOne('collections', item);
+  else if(deletedId) fbDeleteOne('collections', deletedId);
+  else fbFullResync('collections', STATE.collections);
+}
+function saveClients(item, deletedId){
+  Store.set('dp_clients', STATE.clients);
+  if(item) fbSaveOne('clients', item);
+  else if(deletedId) fbDeleteOne('clients', deletedId);
+  else fbFullResync('clients', STATE.clients);
+}
+function saveEvents(item, deletedId){
+  Store.set('dp_events', STATE.events);
+  if(item) fbSaveOne('events', item);
+  else if(deletedId) fbDeleteOne('events', deletedId);
+  else fbFullResync('events', STATE.events);
+}
+function saveSuppliers(item, deletedId){
+  Store.set('dp_suppliers', STATE.suppliers);
+  if(item) fbSaveOne('suppliers', item);
+  else if(deletedId) fbDeleteOne('suppliers', deletedId);
+  else fbFullResync('suppliers', STATE.suppliers);
+}
 
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
 
@@ -889,7 +933,13 @@ function renderCatalogo(){
 }
 
 function filteredPieces(){
-  let arr = STATE.pieces.slice().reverse();
+  let arr = STATE.pieces.slice().sort((a,b)=>{
+    const na = parseInt(a.numero,10), nb = parseInt(b.numero,10);
+    if(isNaN(na) && isNaN(nb)) return a.numero.localeCompare(b.numero);
+    if(isNaN(na)) return 1;
+    if(isNaN(nb)) return -1;
+    return na - nb;
+  });
   if(STATE.catalogFilterLevel !== 'ALL') arr = arr.filter(p=>p.nivel===STATE.catalogFilterLevel);
   const q = STATE.catalogSearch.trim().toLowerCase();
   if(q) arr = arr.filter(p =>
@@ -947,6 +997,18 @@ function openPieceEditModal(pieceId){
         <div class="modal-head"><h3>Edit piece</h3><button class="iconbtn" id="close-modal">✕</button></div>
         <div class="modal-body">
           <div class="field"><label>Name</label><input type="text" id="pe-nome" value="${p.nome}"></div>
+          <div class="field">
+            <label>Photo</label>
+            <div style="display:flex; gap:12px; align-items:center; margin-top:6px;">
+              <div id="pe-photo-preview" style="width:84px; height:84px; border-radius:2px; overflow:hidden; background:var(--cream-deep); flex:none;">
+                ${p.img ? `<img src="${p.img}" style="width:100%; height:100%; object-fit:cover;">` : ''}
+              </div>
+              <div>
+                <input type="file" id="pe-photo" accept="image/*">
+                ${p.img ? '<button type="button" class="btn ghost small" id="pe-photo-remove" style="margin-top:8px;">Remove photo</button>' : ''}
+              </div>
+            </div>
+          </div>
           <div class="row2">
             <div class="field"><label>Supplier</label><input type="text" id="pe-fornecedor" value="${p.fornecedor}"></div>
             <div class="field"><label>Level</label>
@@ -973,6 +1035,24 @@ function openPieceEditModal(pieceId){
   root.querySelector('#cancel-modal').onclick = close;
   root.querySelector('#ov').addEventListener('click', (e)=>{ if(e.target.id==='ov') close(); });
   bindStarPicker(root, 'pe-rating');
+  let pendingPhotoFile = null;
+  let photoRemoved = false;
+  root.querySelector('#pe-photo').addEventListener('change', (e)=>{
+    pendingPhotoFile = e.target.files[0] || null;
+    photoRemoved = false;
+    if(pendingPhotoFile){
+      const reader = new FileReader();
+      reader.onload = ()=>{ root.querySelector('#pe-photo-preview').innerHTML = `<img src="${reader.result}" style="width:100%; height:100%; object-fit:cover;">`; };
+      reader.readAsDataURL(pendingPhotoFile);
+    }
+  });
+  const removePhotoBtn = root.querySelector('#pe-photo-remove');
+  if(removePhotoBtn) removePhotoBtn.addEventListener('click', ()=>{
+    photoRemoved = true;
+    pendingPhotoFile = null;
+    root.querySelector('#pe-photo-preview').innerHTML = '';
+    toast('Photo will be removed on save.');
+  });
   root.querySelector('#delete-piece').onclick = ()=>{
     customConfirm(`Delete "${p.nome}" from the catalog? It will also be removed from collections and client records where it appears.`, ()=>{
       STATE.pieces = STATE.pieces.filter(x=>x.id!==p.id);
@@ -987,12 +1067,25 @@ function openPieceEditModal(pieceId){
       renderCatalogo();
     });
   };
-  root.querySelector('#save-piece').onclick = ()=>{
+  root.querySelector('#save-piece').onclick = async ()=>{
     const newName = root.querySelector('#pe-nome').value.trim() || p.nome;
     if(nomeExists(newName, p.id)){
       root.querySelector('#pe-nome').style.borderColor = 'var(--danger)';
       toast('A piece with this name already exists.');
       return;
+    }
+    const saveBtn = root.querySelector('#save-piece');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving...';
+    if(pendingPhotoFile){
+      try{ p.img = await fbUploadPieceImage(pendingPhotoFile, p.id); }
+      catch(err){
+        toast('Could not upload the photo. Check your connection and try again.');
+        saveBtn.disabled = false; saveBtn.textContent = 'Save';
+        return;
+      }
+    } else if(photoRemoved){
+      p.img = '';
     }
     p.nome = newName;
     p.fornecedor = root.querySelector('#pe-fornecedor').value.trim();
@@ -1150,7 +1243,7 @@ function openCreateCollectionModal(){
       if(!name){ toast('Give the collection a name.'); return; }
       const coll = { id: uid(), name, createdAt: new Date().toISOString(), pieces: ids.map(newPieceStub) };
       STATE.collections.push(coll);
-      saveCollections();
+      saveCollections(coll);
       STATE.selection.clear();
       close();
       toast('Collection created successfully.');
@@ -1166,7 +1259,7 @@ function openCreateCollectionModal(){
       ids.forEach(id=>{
         if(!existingIds.has(id)){ coll.pieces.push(newPieceStub(id)); addedCount++; }
       });
-      saveCollections();
+      saveCollections(coll);
       STATE.selection.clear();
       close();
       toast(`${addedCount} piece${addedCount!==1?'s':''} added to "${coll.name}".`);
@@ -1201,7 +1294,7 @@ function readImageAsDateURL(file){
     const reader = new FileReader();
     reader.onload = ()=> resolve(reader.result);
     reader.onerror = reject;
-    reader.readAsDateURL(file);
+    reader.readAsDataURL(file);
   });
 }
 
@@ -1381,7 +1474,7 @@ function renderColecoes(){
       e.stopPropagation();
       customConfirm('Delete this collection? This action cannot be undone.', ()=>{
         STATE.collections = STATE.collections.filter(c=>c.id!==b.dataset.collId);
-        saveCollections();
+        saveCollections(null, b.dataset.collId);
         renderColecoes();
       });
     });
@@ -1425,6 +1518,7 @@ function renderCollectionDetail(el, collId){
       <div style="display:flex; gap:10px; flex-wrap:wrap;">
         <button class="btn ghost" id="edit-name">Rename collection</button>
         <button class="btn ghost" id="export-this-coll">Export (.csv)</button>
+        <button class="btn" id="share-coll">Share</button>
       </div>
     </div>
     ${tabsBarHTML()}
@@ -1444,10 +1538,11 @@ function renderCollectionDetail(el, collId){
   });
   el.querySelector('#edit-name').onclick = ()=>{
     customPrompt('New collection name', c.name, (name)=>{
-      c.name = name; saveCollections(); renderColecoes();
+      c.name = name; saveCollections(c); renderColecoes();
     });
   };
   el.querySelector('#export-this-coll').onclick = ()=> exportCollectionCSV(c.id);
+  el.querySelector('#share-coll').onclick = ()=> openShareModal(c);
 
   const body = el.querySelector('#coll-body');
   if(STATE.collSub === 'report'){
@@ -1483,7 +1578,7 @@ function renderCollectionPiecesList(body, c, el){
     btn.addEventListener('click', ()=>{
       customConfirm('Remove this piece from the collection?', ()=>{
         c.pieces = c.pieces.filter(cp=>cp.pieceId!==btn.dataset.removeId);
-        saveCollections();
+        saveCollections(c);
         renderCollectionDetail(el, c.id);
       });
     });
@@ -1638,7 +1733,7 @@ function renderCollectionReport(body, c, el){
     c.costs.materials = body.querySelector('#cost-materials').value;
     c.costs.fuel = body.querySelector('#cost-fuel').value;
     c.costs.general = body.querySelector('#cost-general').value;
-    saveCollections();
+    saveCollections(c);
     toast('Costs saved.');
     renderCollectionDetail(el, c.id);
   };
@@ -1834,7 +1929,7 @@ function openCollPieceEditModal(collId, pieceId){
     cp.demand_notes = root.querySelector('#ce-demand').value.trim();
     cp.variants = variants.filter(v=>v.label.trim()||v.qty);
     cp.order = root.querySelector('#ce-order').value;
-    saveCollections();
+    saveCollections(c);
     close();
     toast('Piece updated.');
     renderCollectionDetail(document.getElementById('panel-colecoes'), c.id);
@@ -1881,7 +1976,7 @@ function renderPortfolio(){
   renderFolioGrid(c);
 
   el.querySelector('#btn-present').onclick = ()=> openPresentMode(c);
-  el.querySelector('#btn-print').onclick = ()=> window.print();
+  el.querySelector('#btn-print').onclick = ()=>{ openPresentMode(c); setTimeout(()=> window.print(), 300); };
   el.querySelector('#btn-copy').onclick = ()=> copyFolioSummary(c);
 }
 
@@ -1900,7 +1995,7 @@ function folioCardHTML(cp){
       <div class="fserial">Serial No. ${p.codigo}</div>
       <div class="fname">${p.nome}</div>
       <div class="fprice">${cp.valor_venda ? fmtMoney(cp.valor_venda) : 'Ask us'}</div>
-      <div class="fmat">${cp.hipoalergenico}</div>
+      ${cp.hipoalergenico ? `<div class="fmat">${cp.hipoalergenico}</div>` : (p.materiais ? `<div class="fmat">${p.materiais}</div>` : '')}
       ${guaranteeLine}
       ${docsLine}
     </div>
@@ -2068,13 +2163,16 @@ function openPresentMode(c){
         <div class="folio-grid">${sortedByOrder(c.pieces).map(folioCardHTML).join('')}</div>
       </div>
       <div class="present-share-bar">
-        <button class="btn" id="btn-share-present">Share collection</button>
+        <button class="btn ghost" id="btn-print-present">Save as PDF / Print</button>
+        <button class="btn" id="btn-share-present">Share as image</button>
       </div>
     </div>`;
   document.body.style.overflow = 'hidden';
-  const close = ()=>{ root.innerHTML = ''; document.body.style.overflow = ''; };
+  document.body.classList.add('presenting');
+  const close = ()=>{ root.innerHTML = ''; document.body.style.overflow = ''; document.body.classList.remove('presenting'); };
   root.querySelector('#close-present').onclick = close;
   root.querySelector('#btn-share-present').onclick = ()=> sharePresentation(c);
+  root.querySelector('#btn-print-present').onclick = ()=> window.print();
   requestAnimationFrame(squareThumbs);
 }
 
@@ -2104,14 +2202,90 @@ function openCatalogPresentMode(){
         </div>
         <div class="folio-grid">${pieces.map(catalogPresentCardHTML).join('')}</div>
       </div>
+      <div class="present-share-bar">
+        <button class="btn ghost" id="btn-print-present">Save as PDF / Print</button>
+      </div>
     </div>`;
   document.body.style.overflow = 'hidden';
-  const close = ()=>{ root.innerHTML = ''; document.body.style.overflow = ''; };
+  document.body.classList.add('presenting');
+  const close = ()=>{ root.innerHTML = ''; document.body.style.overflow = ''; document.body.classList.remove('presenting'); };
   root.querySelector('#close-present').onclick = close;
+  root.querySelector('#btn-print-present').onclick = ()=> window.print();
   requestAnimationFrame(squareThumbs);
 }
 
-/* ================= SUPPLIERS ================= */
+/* ================= SHARE COLLECTION (public live link) ================= */
+function buildShareSnapshot(c){
+  return c.pieces.map(cp=>{
+    const p = STATE.pieces.find(pp=>pp.id===cp.pieceId);
+    if(!p) return null;
+    return {
+      id: p.id, nome: p.nome, codigo: p.codigo, img: p.img,
+      valor_venda: cp.valor_venda, hipoalergenico: cp.hipoalergenico || p.materiais,
+      garantia: cp.garantia, documents: cp.documents||[], order: cp.order||''
+    };
+  }).filter(Boolean);
+}
+
+function getShareUrl(c){
+  return location.origin + location.pathname.replace(/index\.html$/,'').replace(/\/$/,'') + '/view.html?c=' + c.id;
+}
+
+function openShareModal(c){
+  const root = document.getElementById('modal-root');
+  const url = getShareUrl(c);
+  const render = ()=>{
+    root.innerHTML = `
+      <div class="overlay show" id="ov">
+        <div class="modal">
+          <div class="modal-head"><h3>Share "${c.name}"</h3><button class="iconbtn" id="close-modal">✕</button></div>
+          <div class="modal-body">
+            <div class="field">
+              <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                <input type="checkbox" id="share-toggle" ${c.public?'checked':''} style="width:auto;">
+                Make this collection viewable via a public link
+              </label>
+              <p class="small-note">Anyone with the link can view this collection (photos, prices, composition). It updates automatically whenever you edit the collection. No login needed to view it.</p>
+            </div>
+            ${c.public ? `
+            <div class="field">
+              <label>Link</label>
+              <input type="text" id="share-url" value="${url}" readonly>
+              <button class="btn ghost small" id="copy-share-url" style="margin-top:8px;">Copy link</button>
+            </div>
+            <div class="field" style="text-align:center;">
+              <label>QR code</label>
+              <img src="https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(url)}" alt="QR code" style="margin-top:8px; border:1px solid var(--line); border-radius:4px;">
+            </div>
+            ` : ''}
+          </div>
+          <div class="modal-foot">
+            <button class="btn ghost" id="cancel-modal">Close</button>
+          </div>
+        </div>
+      </div>`;
+    const close = ()=> root.innerHTML = '';
+    root.querySelector('#close-modal').onclick = close;
+    root.querySelector('#cancel-modal').onclick = close;
+    root.querySelector('#ov').addEventListener('click', (e)=>{ if(e.target.id==='ov') close(); });
+    root.querySelector('#share-toggle').addEventListener('change', (e)=>{
+      c.public = e.target.checked;
+      if(c.public) c.shareSnapshot = buildShareSnapshot(c);
+      saveCollections(c);
+      render();
+    });
+    const copyBtn = root.querySelector('#copy-share-url');
+    if(copyBtn) copyBtn.addEventListener('click', ()=>{
+      const input = root.querySelector('#share-url');
+      input.select();
+      try{ document.execCommand('copy'); toast('Link copied.'); }
+      catch(e){ toast('Could not copy automatically — select and copy manually.'); }
+    });
+  };
+  render();
+}
+
+
 function supplierKey(name){ return name.trim().toLowerCase(); }
 
 function getAllSupplierNames(){
@@ -2131,7 +2305,7 @@ function getSupplierRecord(name){
   if(!rec){
     rec = { id: uid(), name: name.trim(), link:'', notes:'', promo:false, origin:'' };
     STATE.suppliers.push(rec);
-    saveSuppliers();
+    saveSuppliers(rec);
   }
   return rec;
 }
@@ -2174,7 +2348,8 @@ function supplierCardHTML(name){
   const rows = pieces.map(p => supplierPieceRowHTML(p)).join('');
   return `<div class="supplier-card ${rec.promo?'promo':''}">
     <div class="supplier-head">
-      <h3>${rec.name}</h3>
+      ${rec.photo ? `<img src="${rec.photo}" alt="${rec.name}" style="width:44px; height:44px; object-fit:cover; border-radius:2px; flex:none;">` : ''}
+      <h3 style="flex:1;">${rec.name}</h3>
       <button class="iconbtn edit-supplier" data-name="${rec.name}" title="Edit">✎</button>
     </div>
     ${rec.promo ? `<span class="status-pill on">On promotion</span>` : ''}
@@ -2279,8 +2454,13 @@ function openSupplierEditModal(name){
       <div class="modal wide">
         <div class="modal-head"><h3>${rec.name}</h3><button class="iconbtn" id="close-modal">✕</button></div>
         <div class="modal-body">
-          <div class="field"><label>Origin (country / region)</label><input type="text" id="sp-origin" value="${rec.origin||''}" placeholder="e.g.: China, Brazil, India..."></div>
-          <div class="field"><label>Website / link</label><input type="text" id="sp-link" value="${rec.link||''}" placeholder="https://..."></div>
+          <div class="field"><label>Origin / platform</label><input type="text" id="sp-origin" value="${rec.origin||''}" placeholder="e.g.: Alibaba, AliExpress, China, Instagram..."></div>
+          <div class="field"><label>Address / link</label><input type="text" id="sp-link" value="${rec.link||''}" placeholder="https:// or physical address"></div>
+          <div class="field">
+            <label>Reference photo (business card, packaging, etc. — internal only, never shown in the catalog)</label>
+            <input type="file" id="sp-photo" accept="image/*">
+            ${rec.photo ? `<div style="margin-top:8px; width:100px; height:100px; border-radius:2px; overflow:hidden; background:var(--cream-deep);"><img src="${rec.photo}" style="width:100%; height:100%; object-fit:cover;"></div><button type="button" class="btn ghost small" id="sp-photo-remove" style="margin-top:6px;">Remove photo</button>` : ''}
+          </div>
           <div class="field">
             <label>Notes (warranty, quality seal, issues, would you order again...)</label>
             <textarea id="sp-notes" rows="6">${rec.notes||''}</textarea>
@@ -2302,12 +2482,21 @@ function openSupplierEditModal(name){
   root.querySelector('#close-modal').onclick = close;
   root.querySelector('#cancel-modal').onclick = close;
   root.querySelector('#ov').addEventListener('click', (e)=>{ if(e.target.id==='ov') close(); });
+  let pendingPhoto = rec.photo || '';
+  let photoRemoved = false;
+  root.querySelector('#sp-photo').addEventListener('change', async (e)=>{
+    const file = e.target.files[0];
+    if(file){ pendingPhoto = await readImageAsDateURL(file); photoRemoved = false; }
+  });
+  const removeBtn = root.querySelector('#sp-photo-remove');
+  if(removeBtn) removeBtn.addEventListener('click', ()=>{ pendingPhoto = ''; photoRemoved = true; toast('Photo will be removed on save.'); });
   root.querySelector('#save-supplier').onclick = ()=>{
     rec.origin = root.querySelector('#sp-origin').value.trim();
     rec.link = root.querySelector('#sp-link').value.trim();
     rec.notes = root.querySelector('#sp-notes').value.trim();
     rec.promo = root.querySelector('#sp-promo').checked;
-    saveSuppliers();
+    rec.photo = photoRemoved ? '' : pendingPhoto;
+    saveSuppliers(rec);
     close();
     toast('Supplier updated.');
     renderSuppliers();
@@ -2393,7 +2582,7 @@ function renderClients(wrap){
   wrap.querySelectorAll('.del-client').forEach(b=> b.onclick = ()=>{
     customConfirm('Delete this client?', ()=>{
       STATE.clients = STATE.clients.filter(c=>c.id!==b.dataset.id);
-      saveClients(); renderClients(wrap);
+      saveClients(null, b.dataset.id); renderClients(wrap);
     });
   });
 }
@@ -2496,7 +2685,7 @@ function openClientModal(id){
     } else {
       STATE.clients.push(data);
     }
-    saveClients();
+    saveClients(data);
     close();
     toast('Client saved.');
     renderSchedule();
@@ -2578,7 +2767,7 @@ function renderDayDetail(wrap, dateStr){
   box.querySelectorAll('[data-evt-id]').forEach(b=>{
     b.onclick = ()=>{
       STATE.events = STATE.events.filter(e=>e.id!==b.dataset.evtId);
-      saveEvents();
+      saveEvents(null, b.dataset.evtId);
       renderCalendario(wrap);
     };
   });
@@ -2612,15 +2801,16 @@ function openEventModal(dateStr, calWrap){
   root.querySelector('#ov').addEventListener('click', (e)=>{ if(e.target.id==='ov') close(); });
   root.querySelector('#save-evt').onclick = ()=>{
     const date = root.querySelector('#ev-date').value || dateStr;
-    STATE.events.push({
+    const newEvt = {
       id: uid(), date,
       endereco: root.querySelector('#ev-end').value.trim(),
       hora_inicio: root.querySelector('#ev-hi').value,
       hora_fim: root.querySelector('#ev-hf').value,
       vendas: root.querySelector('#ev-vendas').value,
       notas: root.querySelector('#ev-notas').value.trim()
-    });
-    saveEvents();
+    };
+    STATE.events.push(newEvt);
+    saveEvents(newEvt);
     close();
     toast('Trip saved.');
     renderCalendario(calWrap);
@@ -2764,10 +2954,8 @@ function exportCollectionCSV(collId){
 /* Rendering now starts after Firebase auth + first data snapshot
    (see fbSafeRenderAll() in firebase_config.js). */
 function squareThumbs(){
-  document.querySelectorAll('.piece-card .thumb, .folio-card .fimg').forEach(el=>{
-    const w = el.offsetWidth;
-    if(w > 0) el.style.height = w + 'px';
-  });
+  // no-op: image aspect ratio is now handled purely via CSS (aspect-ratio:1/1),
+  // which works reliably both on screen and when printing/exporting to PDF.
 }
 window.addEventListener('resize', squareThumbs);
 window.addEventListener('load', squareThumbs);
