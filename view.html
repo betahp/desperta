@@ -25,6 +25,17 @@ body{margin:0; font-family:'Inter',sans-serif; color:var(--ink); background:var(
 .card{background:var(--paper); border:1px solid var(--gold-pale); border-radius:3px; overflow:hidden;}
 .card .img{width:100%; aspect-ratio:1; background:var(--cream-deep); position:relative; overflow:hidden;}
 .card .img img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover;}
+.img-carousel{padding:0;}
+.img-track{
+  display:flex; width:100%; height:100%; overflow-x:auto; scroll-snap-type:x mandatory;
+  -webkit-overflow-scrolling:touch; scrollbar-width:none;
+}
+.img-track::-webkit-scrollbar{display:none;}
+.img-slide{flex:none; width:100%; height:100%; scroll-snap-align:start; position:relative;}
+.img-slide img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover;}
+.img-dots{position:absolute; bottom:10px; left:0; right:0; display:flex; justify-content:center; gap:6px; z-index:2;}
+.img-dot{width:6px; height:6px; border-radius:50%; background:rgba(255,255,255,.55); box-shadow:0 0 0 1px rgba(0,0,0,.15);}
+.img-dot.active{background:#fff;}
 .card .body{padding:18px 18px 20px; text-align:center;}
 .card .serial{font-size:10px; letter-spacing:.14em; color:var(--gold); text-transform:uppercase;}
 .card .name{font-family:'Cormorant Garamond',serif; font-style:italic; font-size:22px; margin:6px 0 8px;}
@@ -63,11 +74,36 @@ function money(v){
   return 'AUD$' + n.toFixed(2);
 }
 
+function imgCarouselHTML(photos, alt){
+  if(photos.length <= 1){
+    const img = photos[0] ? `<img src="${photos[0]}" alt="${alt}" loading="lazy">` : '';
+    return `<div class="img">${img}</div>`;
+  }
+  const slides = photos.map(src => `<div class="img-slide"><img src="${src}" alt="${alt}" loading="lazy"></div>`).join('');
+  const dots = photos.map((_,i) => `<span class="img-dot${i===0?' active':''}"></span>`).join('');
+  return `<div class="img img-carousel">
+    <div class="img-track">${slides}</div>
+    <div class="img-dots">${dots}</div>
+  </div>`;
+}
+
+function bindCarousels(){
+  document.querySelectorAll('.img-carousel').forEach(el=>{
+    const track = el.querySelector('.img-track');
+    const dots = el.querySelectorAll('.img-dot');
+    track.addEventListener('scroll', ()=>{
+      const idx = Math.round(track.scrollLeft / track.clientWidth);
+      dots.forEach((d,i)=> d.classList.toggle('active', i===idx));
+    }, { passive:true });
+  });
+}
+
 function cardHTML(p){
-  const img = p.img ? `<img src="${p.img}" alt="${p.nome}" loading="lazy">` : '';
+  const photos = [p.img, p.img2].filter(Boolean);
+  const imgBlock = imgCarouselHTML(photos, p.nome);
   const guaranteeTxt = p.garantia==='sim' ? 'Warranty: Yes' : p.garantia==='nao' ? 'Warranty: No' : '';
   return `<div class="card">
-    <div class="img">${img}</div>
+    ${imgBlock}
     <div class="body">
       <div class="serial">${p.codigo||''}</div>
       <div class="name">${p.nome}</div>
@@ -113,6 +149,7 @@ async function init(){
         <div class="grid">${pieces.map(cardHTML).join('') || '<p style="grid-column:1/-1; text-align:center; color:var(--ink-faint);">No pieces to show yet.</p>'}</div>
         <div class="footer">Desperta</div>
       </div>`;
+    bindCarousels();
   }catch(err){
     console.error(err);
     root.innerHTML = `<div class="state"><h2>Could not load this collection</h2><p>Please check your connection and try again.</p></div>`;
