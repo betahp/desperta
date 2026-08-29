@@ -818,6 +818,9 @@ const STATE = {
 };
 
 function saveCollections(item, deletedId){
+  if(item && item.public){
+    item.shareSnapshot = buildShareSnapshot(item);
+  }
   Store.set('dp_collections', STATE.collections);
   if(item) fbSaveOne('collections', item);
   else if(deletedId) fbDeleteOne('collections', deletedId);
@@ -853,7 +856,7 @@ function uid(){ return Date.now().toString(36) + Math.random().toString(36).slic
 function fmtMoney(v){
   const n = parseFloat(v);
   if(isNaN(n)) return '—';
-  return 'AU$' + n.toFixed(2);
+  return 'AUD$' + n.toFixed(2);
 }
 
 function toast(msg){
@@ -1046,7 +1049,7 @@ function openPieceEditModal(pieceId){
             </div>
           </div>
           <div class="field"><label>Materials</label><textarea id="pe-materiais" rows="4">${p.materiais}</textarea></div>
-          <div class="field" style="max-width:240px;"><label>Final value</label><input type="number" step="0.01" id="pe-valor" value="${p.valor_final||''}" placeholder="AU$"></div>
+          <div class="field" style="max-width:240px;"><label>Final value</label><input type="number" step="0.01" id="pe-valor" value="${p.valor_final||''}" placeholder="AUD$"></div>
           <div class="field"><label>Quality rating</label>${starPickerHTML('pe-rating', p.rating||0)}</div>
           <div style="margin-top:22px; padding-top:14px; border-top:1px solid var(--line-soft); text-align:right;">
             <button id="delete-piece" style="border:none; background:none; color:var(--danger); font-size:11px; text-decoration:underline; padding:4px;">Delete this piece from the catalog</button>
@@ -1801,7 +1804,7 @@ function collPieceEditHTML(c, cp){
       ${rangeLine('Physical market', cp.fisico_min, cp.fisico_max)}
       ${rangeLine('Level range', cp.nivel_min, cp.nivel_max)}
       ${cp.preco_pago ? `<div class="kv"><b>Price paid</b>${fmtMoney(cp.preco_pago)}</div>` : ''}
-      <div class="kv"><b>Sale value</b>${cp.valor_venda ? fmtMoney(cp.valor_venda) : '—'}</div>
+      <div class="kv"><b>Sale value</b>${(cp.valor_venda || p.valor_final) ? fmtMoney(cp.valor_venda || p.valor_final) : '—'}</div>
       ${cp.variants && cp.variants.length ? `<div class="kv"><b>Stock</b>${cp.variants.map(v=>`${v.label||'?'} (${v.qty||0})`).join(' · ')} — total ${cp.variants.reduce((s,v)=>s+(parseInt(v.qty,10)||0),0)}</div>` : ''}
       ${cp.sold ? `<div class="kv"><b>Sold on</b>${cp.sold_date||'—'}${cp.sold_qty && cp.sold_qty!=='1' ? ` (x${cp.sold_qty})` : ''}</div>` : ''}
       <div class="kv"><b>Warranty</b>${garantiaTxt}</div>
@@ -2040,7 +2043,7 @@ function folioCardHTML(cp){
     <div class="fbody">
       <div class="fserial">Serial No. ${p.codigo}</div>
       <div class="fname">${p.nome}</div>
-      <div class="fprice">${cp.valor_venda ? fmtMoney(cp.valor_venda) : 'Ask us'}</div>
+      <div class="fprice">${(cp.valor_venda || p.valor_final) ? fmtMoney(cp.valor_venda || p.valor_final) : 'Ask us'}</div>
       ${cp.hipoalergenico ? `<div class="fmat">${cp.hipoalergenico}</div>` : (p.materiais ? `<div class="fmat">${p.materiais}</div>` : '')}
       ${guaranteeLine}
       ${docsLine}
@@ -2159,7 +2162,7 @@ function copyFolioSummary(c){
     const p = STATE.pieces.find(pp=>pp.id===cp.pieceId);
     if(!p) return null;
     const g = cp.garantia==='sim' ? 'With warranty' : cp.garantia==='nao' ? 'No warranty' : '—';
-    return [p.nome, p.codigo, cp.valor_venda ? fmtMoney(cp.valor_venda) : 'Ask us', g];
+    return [p.nome, p.codigo, (cp.valor_venda || p.valor_final) ? fmtMoney(cp.valor_venda || p.valor_final) : 'Ask us', g];
   }).filter(Boolean);
   showReadableList(`Summary: ${c.name}`, header, dataRows);
 }
@@ -2370,7 +2373,7 @@ function buildShareSnapshot(c){
     if(!p) return null;
     return {
       id: p.id, nome: p.nome, codigo: p.codigo, img: p.img,
-      valor_venda: cp.valor_venda, hipoalergenico: cp.hipoalergenico || p.materiais,
+      valor_venda: cp.valor_venda || p.valor_final, hipoalergenico: cp.hipoalergenico || p.materiais,
       garantia: cp.garantia, documents: cp.documents||[], order: cp.order||''
     };
   }).filter(Boolean);
