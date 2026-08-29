@@ -317,6 +317,17 @@ textarea{resize:vertical; min-height:60px;}
 .folio-card{background:var(--paper); border:1px solid var(--gold-pale); position:relative;}
 .folio-card .fimg{width:100%; aspect-ratio:1/1; background:var(--cream-deep); position:relative; overflow:hidden;}
 .folio-card .fimg > img{position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; display:block;}
+.fimg-carousel{padding:0;}
+.fimg-track{
+  display:flex; width:100%; height:100%; overflow-x:auto; scroll-snap-type:x mandatory;
+  -webkit-overflow-scrolling:touch; scrollbar-width:none;
+}
+.fimg-track::-webkit-scrollbar{display:none;}
+.fimg-slide{flex:none; width:100%; height:100%; scroll-snap-align:start; position:relative;}
+.fimg-slide img{position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; display:block;}
+.fimg-dots{position:absolute; bottom:10px; left:0; right:0; display:flex; justify-content:center; gap:6px; z-index:2;}
+.fimg-dot{width:6px; height:6px; border-radius:50%; background:rgba(255,255,255,.55); box-shadow:0 0 0 1px rgba(0,0,0,.15); transition:background .15s;}
+.fimg-dot.active{background:#fff;}
 .folio-card .fbody{padding:20px 20px 22px; text-align:center;}
 .folio-card .fserial{font-size:10px; letter-spacing:.16em; color:var(--gold); text-transform:uppercase;}
 .folio-card .fname{font-family:'Cormorant Garamond',serif; font-style:italic; font-size:24px; margin:6px 0 10px;}
@@ -474,6 +485,10 @@ textarea{resize:vertical; min-height:60px;}
     break-inside:avoid; page-break-inside:avoid; border-color:#ccc;
   }
   .folio-card .fimg{aspect-ratio:1/1 !important; height:auto !important;}
+  .fimg-dots{display:none !important;}
+  .fimg-track{overflow:hidden !important;}
+  .fimg-slide{display:none !important;}
+  .fimg-slide:first-child{display:block !important;}
 }
 
 .small-note{font-size:11px; color:var(--ink-faint); margin-top:4px;}
@@ -1015,7 +1030,7 @@ function renderCatalogResults(){
       });
     });
   }
-  requestAnimationFrame(squareThumbs);
+  requestAnimationFrame(squareThumbs); bindPhotoCarousels();
 }
 
 function openPieceEditModal(pieceId){
@@ -1029,7 +1044,7 @@ function openPieceEditModal(pieceId){
         <div class="modal-body">
           <div class="field"><label>Name</label><input type="text" id="pe-nome" value="${p.nome}"></div>
           <div class="field">
-            <label>Photo</label>
+            <label>Photo (shown in Catalog, Portfolio and shared link)</label>
             <div style="display:flex; gap:12px; align-items:center; margin-top:6px;">
               <div id="pe-photo-preview" style="width:84px; height:84px; border-radius:2px; overflow:hidden; background:var(--cream-deep); flex:none;">
                 ${p.img ? `<img src="${p.img}" style="width:100%; height:100%; object-fit:cover;">` : ''}
@@ -1037,6 +1052,18 @@ function openPieceEditModal(pieceId){
               <div>
                 <input type="file" id="pe-photo" accept="image/*">
                 ${p.img ? '<button type="button" class="btn ghost small" id="pe-photo-remove" style="margin-top:8px;">Remove photo</button>' : ''}
+              </div>
+            </div>
+          </div>
+          <div class="field">
+            <label>Second photo (optional — only shown in Portfolio and shared link, as a swipeable second image)</label>
+            <div style="display:flex; gap:12px; align-items:center; margin-top:6px;">
+              <div id="pe-photo2-preview" style="width:84px; height:84px; border-radius:2px; overflow:hidden; background:var(--cream-deep); flex:none;">
+                ${p.img2 ? `<img src="${p.img2}" style="width:100%; height:100%; object-fit:cover;">` : ''}
+              </div>
+              <div>
+                <input type="file" id="pe-photo2" accept="image/*">
+                ${p.img2 ? '<button type="button" class="btn ghost small" id="pe-photo2-remove" style="margin-top:8px;">Remove photo</button>' : ''}
               </div>
             </div>
           </div>
@@ -1084,6 +1111,24 @@ function openPieceEditModal(pieceId){
     root.querySelector('#pe-photo-preview').innerHTML = '';
     toast('Photo will be removed on save.');
   });
+  let pendingPhoto2File = null;
+  let photo2Removed = false;
+  root.querySelector('#pe-photo2').addEventListener('change', (e)=>{
+    pendingPhoto2File = e.target.files[0] || null;
+    photo2Removed = false;
+    if(pendingPhoto2File){
+      const reader = new FileReader();
+      reader.onload = ()=>{ root.querySelector('#pe-photo2-preview').innerHTML = `<img src="${reader.result}" style="width:100%; height:100%; object-fit:cover;">`; };
+      reader.readAsDataURL(pendingPhoto2File);
+    }
+  });
+  const removePhoto2Btn = root.querySelector('#pe-photo2-remove');
+  if(removePhoto2Btn) removePhoto2Btn.addEventListener('click', ()=>{
+    photo2Removed = true;
+    pendingPhoto2File = null;
+    root.querySelector('#pe-photo2-preview').innerHTML = '';
+    toast('Second photo will be removed on save.');
+  });
   root.querySelector('#delete-piece').onclick = ()=>{
     customConfirm(`Delete "${p.nome}" from the catalog? It will also be removed from collections and client records where it appears.`, ()=>{
       STATE.pieces = STATE.pieces.filter(x=>x.id!==p.id);
@@ -1117,6 +1162,16 @@ function openPieceEditModal(pieceId){
       }
     } else if(photoRemoved){
       p.img = '';
+    }
+    if(pendingPhoto2File){
+      try{ p.img2 = await fbUploadPieceImage(pendingPhoto2File, p.id + '-b'); }
+      catch(err){
+        toast('Could not upload the second photo. Check your connection and try again.');
+        saveBtn.disabled = false; saveBtn.textContent = 'Save';
+        return;
+      }
+    } else if(photo2Removed){
+      p.img2 = '';
     }
     p.nome = newName;
     p.fornecedor = root.querySelector('#pe-fornecedor').value.trim();
@@ -2032,14 +2087,15 @@ function renderPortfolio(){
 function folioCardHTML(cp){
   const p = STATE.pieces.find(pp=>pp.id===cp.pieceId);
   if(!p) return '';
-  const img = p.img ? `<img src="${p.img}" alt="${p.nome}" loading="eager" decoding="sync">` : '';
+  const photos = [p.img, p.img2].filter(Boolean);
+  const imgBlock = photoCarouselHTML(photos, p.nome);
   const guaranteeLine = cp.garantia==='sim' ? `<div class="fguarantee yes">✓ With warranty</div>`
                        : cp.garantia==='nao' ? `<div class="fguarantee">No warranty</div>`
                        : '';
   const docLabels = (cp.documents||[]).map(k => (DOCUMENT_TYPES.find(d=>d[0]===k)||[])[1]).filter(Boolean);
   const docsLine = docLabels.length ? `<div class="fguarantee">${docLabels.join(' · ')}</div>` : '';
   return `<div class="folio-card">
-    <div class="fimg">${img}</div>
+    ${imgBlock}
     <div class="fbody">
       <div class="fserial">Serial No. ${p.codigo}</div>
       <div class="fname">${p.nome}</div>
@@ -2049,6 +2105,32 @@ function folioCardHTML(cp){
       ${docsLine}
     </div>
   </div>`;
+}
+
+function photoCarouselHTML(photos, alt){
+  if(photos.length <= 1){
+    const img = photos[0] ? `<img src="${photos[0]}" alt="${alt}" loading="eager" decoding="sync">` : '';
+    return `<div class="fimg">${img}</div>`;
+  }
+  const slides = photos.map(src => `<div class="fimg-slide"><img src="${src}" alt="${alt}" loading="eager" decoding="sync"></div>`).join('');
+  const dots = photos.map((_,i) => `<span class="fimg-dot${i===0?' active':''}"></span>`).join('');
+  return `<div class="fimg fimg-carousel">
+    <div class="fimg-track">${slides}</div>
+    <div class="fimg-dots">${dots}</div>
+  </div>`;
+}
+
+function bindPhotoCarousels(root){
+  (root||document).querySelectorAll('.fimg-carousel').forEach(el=>{
+    const track = el.querySelector('.fimg-track');
+    const dots = el.querySelectorAll('.fimg-dot');
+    if(track._boundCarousel) return;
+    track._boundCarousel = true;
+    track.addEventListener('scroll', ()=>{
+      const idx = Math.round(track.scrollLeft / track.clientWidth);
+      dots.forEach((d,i)=> d.classList.toggle('active', i===idx));
+    }, { passive:true });
+  });
 }
 
 function sortedByOrder(pieces){
@@ -2062,7 +2144,7 @@ function sortedByOrder(pieces){
 
 function renderFolioGrid(c){
   document.getElementById('folio-grid').innerHTML = sortedByOrder(c.pieces).map(folioCardHTML).join('');
-  requestAnimationFrame(squareThumbs);
+  requestAnimationFrame(squareThumbs); bindPhotoCarousels();
 }
 
 function showTextModal(title, text){
@@ -2228,7 +2310,7 @@ function openPresentMode(c){
   root.querySelector('#close-present').onclick = close;
   root.querySelector('#btn-share-present').onclick = ()=> sharePresentation(c);
   root.querySelector('#btn-print-present').onclick = ()=> window.print();
-  requestAnimationFrame(squareThumbs);
+  requestAnimationFrame(squareThumbs); bindPhotoCarousels();
 }
 
 function catalogPresentCardHTML(p){
@@ -2266,7 +2348,7 @@ function openCatalogPresentMode(){
   const close = ()=>{ root.innerHTML = ''; document.body.style.overflow = ''; document.body.classList.remove('presenting'); };
   root.querySelector('#close-present').onclick = close;
   root.querySelector('#btn-print-present').onclick = ()=> window.print();
-  requestAnimationFrame(squareThumbs);
+  requestAnimationFrame(squareThumbs); bindPhotoCarousels();
 }
 
 /* ================= PROSPECTIVE LOCATIONS ================= */
@@ -2372,7 +2454,7 @@ function buildShareSnapshot(c){
     const p = STATE.pieces.find(pp=>pp.id===cp.pieceId);
     if(!p) return null;
     return {
-      id: p.id, nome: p.nome, codigo: p.codigo, img: p.img,
+      id: p.id, nome: p.nome, codigo: p.codigo, img: p.img, img2: p.img2,
       valor_venda: cp.valor_venda || p.valor_final, hipoalergenico: cp.hipoalergenico || p.materiais,
       garantia: cp.garantia, documents: cp.documents||[], order: cp.order||''
     };
