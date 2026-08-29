@@ -853,7 +853,7 @@ function uid(){ return Date.now().toString(36) + Math.random().toString(36).slic
 function fmtMoney(v){
   const n = parseFloat(v);
   if(isNaN(n)) return '—';
-  return n.toLocaleString('en-US', {style:'currency', currency:'BRL'});
+  return 'AU$' + n.toFixed(2);
 }
 
 function toast(msg){
@@ -1046,7 +1046,7 @@ function openPieceEditModal(pieceId){
             </div>
           </div>
           <div class="field"><label>Materials</label><textarea id="pe-materiais" rows="4">${p.materiais}</textarea></div>
-          <div class="field" style="max-width:240px;"><label>Final value</label><input type="number" step="0.01" id="pe-valor" value="${p.valor_final||''}" placeholder="R$"></div>
+          <div class="field" style="max-width:240px;"><label>Final value</label><input type="number" step="0.01" id="pe-valor" value="${p.valor_final||''}" placeholder="AU$"></div>
           <div class="field"><label>Quality rating</label>${starPickerHTML('pe-rating', p.rating||0)}</div>
           <div style="margin-top:22px; padding-top:14px; border-top:1px solid var(--line-soft); text-align:right;">
             <button id="delete-piece" style="border:none; background:none; color:var(--danger); font-size:11px; text-decoration:underline; padding:4px;">Delete this piece from the catalog</button>
