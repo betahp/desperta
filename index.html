@@ -746,7 +746,7 @@ async function fbFullResync(collectionName, array){
 function fbSaveOne(collectionName, item){
   return fbDb.collection(collectionName).doc(String(item.id)).set(item).catch(err=>{
     console.error(collectionName + ' save failed', err);
-    if(typeof toast === 'function') toast('Could not save to the cloud. Check your connection.');
+    if(typeof toast === 'function') toast('Save failed: ' + (err.message || err.code || 'unknown error'));
     throw err;
   });
 }
@@ -2601,7 +2601,8 @@ function openShareModal(c){
         render();
       }catch(err){
         c.public = false;
-        toast('Could not save — check your connection and try again.');
+        console.error('Turn ON failed', err);
+        toast('Failed: ' + (err.message || err.code || 'unknown error'));
         btn.disabled = false;
         btn.textContent = 'Turn ON public link';
       }
@@ -2618,7 +2619,8 @@ function openShareModal(c){
         render();
       }catch(err){
         c.public = true;
-        toast('Could not save — check your connection and try again.');
+        console.error('Turn OFF failed', err);
+        toast('Failed: ' + (err.message || err.code || 'unknown error'));
         btn.disabled = false;
         btn.textContent = 'Turn OFF public link';
       }
@@ -2632,7 +2634,8 @@ function openShareModal(c){
         await saveCollections(c);
         toast('Link refreshed and saved successfully.');
       }catch(err){
-        toast('Could not refresh — check your connection and try again.');
+        console.error('Force refresh failed', err);
+        toast('Failed: ' + (err.message || err.code || 'unknown error'));
       }
       btn.disabled = false;
       btn.textContent = 'Force refresh link now';
