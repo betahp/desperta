@@ -361,6 +361,7 @@ textarea{resize:vertical; min-height:60px;}
 
 /* ---------- reports ---------- */
 .report-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-top:6px;}
+.material-row{background:var(--cream); border:1px solid var(--line-soft); border-radius:3px; padding:12px; margin-bottom:10px;}
 .report-card{background:var(--paper); border:1px solid var(--line); border-radius:3px; padding:14px;}
 .report-card.highlight{background:var(--cream-deep); border-color:var(--gold-deep);}
 .rc-label{font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-faint);}
@@ -832,9 +833,9 @@ const STATE = {
   agendaSub: 'clientes'
 };
 
-function saveCollections(item, deletedId){
+async function saveCollections(item, deletedId){
   if(item && item.public){
-    item.shareSnapshot = buildShareSnapshot(item);
+    item.shareSnapshot = await buildShareSnapshot(item);
   }
   Store.set('dp_collections', STATE.collections);
   if(item) fbSaveOne('collections', item);
@@ -1043,6 +1044,7 @@ function openPieceEditModal(pieceId){
         <div class="modal-head"><h3>Edit piece</h3><button class="iconbtn" id="close-modal">✕</button></div>
         <div class="modal-body">
           <div class="field"><label>Name</label><input type="text" id="pe-nome" value="${p.nome}"></div>
+          <div class="field" style="max-width:200px;"><label>Code</label><input type="text" id="pe-codigo" value="${p.codigo||''}" placeholder="Ex.: AL-002"></div>
           <div class="field">
             <label>Photo (shown in Catalog, Portfolio and shared link)</label>
             <div style="display:flex; gap:12px; align-items:center; margin-top:6px;">
@@ -1174,6 +1176,7 @@ function openPieceEditModal(pieceId){
       p.img2 = '';
     }
     p.nome = newName;
+    p.codigo = root.querySelector('#pe-codigo').value.trim();
     p.fornecedor = root.querySelector('#pe-fornecedor').value.trim();
     p.nivel = root.querySelector('#pe-nivel').value;
     p.materiais = root.querySelector('#pe-materiais').value.trim();
@@ -1181,6 +1184,7 @@ function openPieceEditModal(pieceId){
     p.rating = root.querySelector('#pe-rating').value;
     Store.set('dp_pieces', STATE.pieces);
     fbSavePiece(p);
+    refreshPublicSnapshotsForPiece(p.id);
     close();
     toast('Piece updated.');
     renderCatalogResults();
@@ -1692,6 +1696,11 @@ function renderCollectionPiecesList(body, c, el){
 /* ================= COLLECTION REPORT ================= */
 function renderCollectionReport(body, c, el){
   if(!c.costs) c.costs = { materials:'', fuel:'', general:'' };
+  if(!Array.isArray(c.costs.materials)){
+    // migrate old single-number format to the new list format
+    const oldVal = c.costs.materials;
+    c.costs.materials = oldVal ? [{ description:'', supplier:'', value: oldVal }] : [];
+  }
 
   const rows = c.pieces.map(cp=>{
     const p = STATE.pieces.find(pp=>pp.id===cp.pieceId);
@@ -1708,7 +1717,7 @@ function renderCollectionReport(body, c, el){
   const totalPaid = rows.reduce((s,r)=> s + paid(r.cp), 0);
   const totalRevenue = soldRows.reduce((s,r)=> s + saleVal(r.cp)*qty(r.cp), 0);
   const totalPending = pendingRows.reduce((s,r)=> s + saleVal(r.cp), 0);
-  const extraCosts = (parseFloat(c.costs.materials)||0) + (parseFloat(c.costs.fuel)||0) + (parseFloat(c.costs.general)||0);
+  const extraCosts = c.costs.materials.reduce((s,m)=>s+(parseFloat(m.value)||0),0) + (parseFloat(c.costs.fuel)||0) + (parseFloat(c.costs.general)||0);
   const netProfit = totalRevenue - totalPaid - extraCosts;
 
   const daysBetween = (d1,d2) => Math.round((new Date(d2) - new Date(d1)) / 86400000);
@@ -1783,12 +1792,14 @@ function renderCollectionReport(body, c, el){
   body.innerHTML = `
     <div class="legend-box" style="margin-bottom:16px;">
       <div class="mini-label" style="margin-top:0;">Extra costs for this collection</div>
-      <div class="row2">
-        <div><label>Materials</label><input type="number" step="0.01" id="cost-materials" value="${c.costs.materials}"></div>
+      <div class="field"><label>Materials</label></div>
+      <div id="materials-list"></div>
+      <button class="btn ghost small" id="add-material" type="button" style="margin-top:6px;">+ Add material</button>
+      <div class="row2" style="margin-top:16px;">
         <div><label>Fuel / transport</label><input type="number" step="0.01" id="cost-fuel" value="${c.costs.fuel}"></div>
+        <div><label>General work costs</label><input type="number" step="0.01" id="cost-general" value="${c.costs.general}"></div>
       </div>
-      <div class="field" style="max-width:240px;"><label>General work costs</label><input type="number" step="0.01" id="cost-general" value="${c.costs.general}"></div>
-      <button class="btn ghost small" id="save-costs" style="margin-top:4px;">Save costs</button>
+      <button class="btn ghost small" id="save-costs" style="margin-top:12px;">Save costs</button>
     </div>
 
     <div class="report-grid">
@@ -1833,8 +1844,49 @@ function renderCollectionReport(body, c, el){
     </div>
   `;
 
+  let materials = c.costs.materials.map(m=>({...m}));
+  const materialsListEl = body.querySelector('#materials-list');
+  function renderMaterials(){
+    materialsListEl.innerHTML = materials.map((m,i)=>`
+      <div class="material-row" data-midx="${i}">
+        <div class="row2">
+          <div><label>Material</label><input type="text" class="m-desc" value="${m.description||''}" placeholder="E.g.: Gold-plated chain"></div>
+          <div><label>Supplier</label><input type="text" class="m-supplier" value="${m.supplier||''}" placeholder="E.g.: Alizero"></div>
+        </div>
+        <div class="row2" style="align-items:end;">
+          <div><label>Quantity</label><input type="text" class="m-qty" value="${m.quantity||''}" placeholder="E.g.: 5m, 20 units"></div>
+          <div><label>Value</label><input type="number" step="0.01" class="m-value" value="${m.value||''}"></div>
+        </div>
+        <div class="row2" style="align-items:end;">
+          <div><label>Logo</label>
+            <select class="m-logo">
+              <option value="" ${!m.logo?'selected':''}>Not specified</option>
+              <option value="com" ${m.logo==='com'?'selected':''}>With logo</option>
+              <option value="sem" ${m.logo==='sem'?'selected':''}>Without logo</option>
+            </select>
+          </div>
+          <div style="display:flex; gap:6px; align-items:end;">
+            <button type="button" class="iconbtn m-remove" title="Remove" style="margin-left:auto;">✕</button>
+          </div>
+        </div>
+      </div>`).join('');
+    materialsListEl.querySelectorAll('[data-midx]').forEach(row=>{
+      const idx = parseInt(row.dataset.midx,10);
+      row.querySelector('.m-desc').addEventListener('input', e=>{ materials[idx].description = e.target.value; });
+      row.querySelector('.m-supplier').addEventListener('input', e=>{ materials[idx].supplier = e.target.value; });
+      row.querySelector('.m-qty').addEventListener('input', e=>{ materials[idx].quantity = e.target.value; });
+      row.querySelector('.m-value').addEventListener('input', e=>{ materials[idx].value = e.target.value; });
+      row.querySelector('.m-logo').addEventListener('change', e=>{ materials[idx].logo = e.target.value; });
+      row.querySelector('.m-remove').addEventListener('click', ()=>{ materials.splice(idx,1); renderMaterials(); });
+    });
+  }
+  renderMaterials();
+  body.querySelector('#add-material').onclick = ()=>{
+    materials.push({description:'', supplier:'', quantity:'', value:'', logo:''});
+    renderMaterials();
+  };
   body.querySelector('#save-costs').onclick = ()=>{
-    c.costs.materials = body.querySelector('#cost-materials').value;
+    c.costs.materials = materials.filter(m=>m.description.trim()||m.supplier.trim()||m.value);
     c.costs.fuel = body.querySelector('#cost-fuel').value;
     c.costs.general = body.querySelector('#cost-general').value;
     saveCollections(c);
@@ -2449,17 +2501,51 @@ function openLocationModal(id){
 }
 
 
-function buildShareSnapshot(c){
-  return c.pieces.map(cp=>{
+async function ensureLightweightUrl(dataUri, storagePath){
+  if(!dataUri || !dataUri.startsWith('data:')) return dataUri || '';
+  try{
+    const res = await fetch(dataUri);
+    const blob = await res.blob();
+    const ext = (blob.type.split('/')[1] || 'jpg').split('+')[0];
+    const file = new File([blob], storagePath + '.' + ext, { type: blob.type });
+    return await fbUploadPieceImage(file, storagePath);
+  }catch(err){
+    console.error('Could not lighten image for sharing', err);
+    return dataUri; // fall back to original if upload fails
+  }
+}
+
+async function buildShareSnapshot(c){
+  const result = [];
+  for(const cp of c.pieces){
     const p = STATE.pieces.find(pp=>pp.id===cp.pieceId);
-    if(!p) return null;
-    return {
-      id: p.id, nome: p.nome, codigo: p.codigo, img: p.img, img2: p.img2,
+    if(!p) continue;
+    // convert any large base64 photo to a small Storage URL, caching it back onto the piece itself
+    if(p.img && p.img.startsWith('data:')){
+      p.img = await ensureLightweightUrl(p.img, p.id);
+      fbSavePiece(p);
+    }
+    if(p.img2 && p.img2.startsWith('data:')){
+      p.img2 = await ensureLightweightUrl(p.img2, p.id + '-b');
+      fbSavePiece(p);
+    }
+    result.push({
+      id: p.id, nome: p.nome, codigo: p.codigo, numero: p.numero, img: p.img, img2: p.img2,
       valor_venda: cp.valor_venda || p.valor_final, hipoalergenico: cp.hipoalergenico || p.materiais,
       garantia: cp.garantia, documents: cp.documents||[], order: cp.order||''
-    };
-  }).filter(Boolean);
+    });
+  }
+  return result;
 }
+
+async function refreshPublicSnapshotsForPiece(pieceId){
+  const affected = STATE.collections.filter(c => c.public && c.pieces.some(cp=>cp.pieceId===pieceId));
+  for(const c of affected){
+    c.shareSnapshot = await buildShareSnapshot(c);
+    fbSaveOne('collections', c);
+  }
+}
+
 
 function getShareUrl(c){
   return location.origin + location.pathname.replace(/index\.html$/,'').replace(/\/$/,'') + '/view.html?c=' + c.id;
