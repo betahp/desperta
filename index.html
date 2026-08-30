@@ -744,15 +744,17 @@ async function fbFullResync(collectionName, array){
 }
 
 function fbSaveOne(collectionName, item){
-  fbDb.collection(collectionName).doc(String(item.id)).set(item).catch(err=>{
+  return fbDb.collection(collectionName).doc(String(item.id)).set(item).catch(err=>{
     console.error(collectionName + ' save failed', err);
     if(typeof toast === 'function') toast('Could not save to the cloud. Check your connection.');
+    throw err;
   });
 }
 
 function fbDeleteOne(collectionName, id){
-  fbDb.collection(collectionName).doc(String(id)).delete().catch(err=>{
+  return fbDb.collection(collectionName).doc(String(id)).delete().catch(err=>{
     console.error(collectionName + ' delete failed', err);
+    throw err;
   });
 }
 
@@ -838,9 +840,9 @@ async function saveCollections(item, deletedId){
     item.shareSnapshot = await buildShareSnapshot(item);
   }
   Store.set('dp_collections', STATE.collections);
-  if(item) fbSaveOne('collections', item);
-  else if(deletedId) fbDeleteOne('collections', deletedId);
-  else fbFullResync('collections', STATE.collections);
+  if(item) return await fbSaveOne('collections', item);
+  else if(deletedId) return await fbDeleteOne('collections', deletedId);
+  else return await fbFullResync('collections', STATE.collections);
 }
 function saveClients(item, deletedId){
   Store.set('dp_clients', STATE.clients);
@@ -2561,11 +2563,11 @@ function openShareModal(c){
           <div class="modal-head"><h3>Share "${c.name}"</h3><button class="iconbtn" id="close-modal">✕</button></div>
           <div class="modal-body">
             <div class="field">
-              <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
-                <input type="checkbox" id="share-toggle" ${c.public?'checked':''} style="width:auto;">
-                Make this collection viewable via a public link
-              </label>
-              <p class="small-note">Anyone with the link can view this collection (photos, prices, composition). It updates automatically whenever you edit the collection. No login needed to view it.</p>
+              <p style="margin-bottom:10px;">${c.public ? 'This collection is currently PUBLIC — anyone with the link can view it.' : 'This collection is currently PRIVATE — the link does not work yet.'}</p>
+              <button class="btn ${c.public?'ghost':''}" id="btn-make-public" style="width:100%; padding:16px; font-size:15px; ${c.public?'display:none;':''}">Turn ON public link</button>
+              <button class="btn danger" id="btn-make-private" style="width:100%; padding:16px; font-size:15px; ${c.public?'':'display:none;'}">Turn OFF public link</button>
+              <button class="btn ghost" id="btn-force-refresh" style="width:100%; padding:14px; margin-top:10px; ${c.public?'':'display:none;'}">Force refresh link now</button>
+              <p class="small-note" style="margin-top:10px;">Anyone with the link can view this collection (photos, prices, composition). It updates automatically whenever you edit the collection. No login needed to view it.</p>
             </div>
             ${c.public ? `
             <div class="field">
@@ -2588,13 +2590,53 @@ function openShareModal(c){
     root.querySelector('#close-modal').onclick = close;
     root.querySelector('#cancel-modal').onclick = close;
     root.querySelector('#ov').addEventListener('click', (e)=>{ if(e.target.id==='ov') close(); });
-    root.querySelector('#share-toggle').addEventListener('change', async (e)=>{
-      c.public = e.target.checked;
-      const toggleInput = e.target;
-      toggleInput.disabled = true;
-      await saveCollections(c);
-      render();
-    });
+    root.querySelector('#btn-make-public').onclick = async (e)=>{
+      const btn = e.target;
+      btn.disabled = true;
+      btn.textContent = 'Working...';
+      c.public = true;
+      try{
+        await saveCollections(c);
+        toast('Public link is now active and saved.');
+        render();
+      }catch(err){
+        c.public = false;
+        toast('Could not save — check your connection and try again.');
+        btn.disabled = false;
+        btn.textContent = 'Turn ON public link';
+      }
+    };
+    const privateBtn = root.querySelector('#btn-make-private');
+    if(privateBtn) privateBtn.onclick = async (e)=>{
+      const btn = e.target;
+      btn.disabled = true;
+      btn.textContent = 'Working...';
+      c.public = false;
+      try{
+        await saveCollections(c);
+        toast('Public link turned off.');
+        render();
+      }catch(err){
+        c.public = true;
+        toast('Could not save — check your connection and try again.');
+        btn.disabled = false;
+        btn.textContent = 'Turn OFF public link';
+      }
+    };
+    const refreshBtn = root.querySelector('#btn-force-refresh');
+    if(refreshBtn) refreshBtn.onclick = async (e)=>{
+      const btn = e.target;
+      btn.disabled = true;
+      btn.textContent = 'Refreshing...';
+      try{
+        await saveCollections(c);
+        toast('Link refreshed and saved successfully.');
+      }catch(err){
+        toast('Could not refresh — check your connection and try again.');
+      }
+      btn.disabled = false;
+      btn.textContent = 'Force refresh link now';
+    };
     const copyBtn = root.querySelector('#copy-share-url');
     if(copyBtn) copyBtn.addEventListener('click', ()=>{
       const input = root.querySelector('#share-url');
