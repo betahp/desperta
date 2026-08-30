@@ -2588,10 +2588,11 @@ function openShareModal(c){
     root.querySelector('#close-modal').onclick = close;
     root.querySelector('#cancel-modal').onclick = close;
     root.querySelector('#ov').addEventListener('click', (e)=>{ if(e.target.id==='ov') close(); });
-    root.querySelector('#share-toggle').addEventListener('change', (e)=>{
+    root.querySelector('#share-toggle').addEventListener('change', async (e)=>{
       c.public = e.target.checked;
-      if(c.public) c.shareSnapshot = buildShareSnapshot(c);
-      saveCollections(c);
+      const toggleInput = e.target;
+      toggleInput.disabled = true;
+      await saveCollections(c);
       render();
     });
     const copyBtn = root.querySelector('#copy-share-url');
