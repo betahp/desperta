@@ -714,6 +714,7 @@ function fbSafeRenderAll(){
 /* ---------------- Write helpers used by app.js ---------------- */
 
 function fbSavePiece(p){
+  p = stripUndefinedDeep(p);
   return fbDb.collection('pieces').doc(p.id).set(p).catch(err=>{
     console.error('savePiece failed', err);
     if(typeof toast === 'function') toast('Could not save to the cloud. Check your connection.');
@@ -734,7 +735,7 @@ async function fbFullResync(collectionName, array){
       if(!currentIds.has(docSnap.id)) batch.delete(docSnap.ref);
     });
     array.forEach(item=>{
-      batch.set(fbDb.collection(collectionName).doc(String(item.id)), item);
+      batch.set(fbDb.collection(collectionName).doc(String(item.id)), stripUndefinedDeep(item));
     });
     await batch.commit();
   }catch(err){
@@ -743,7 +744,23 @@ async function fbFullResync(collectionName, array){
   }
 }
 
+function stripUndefinedDeep(value){
+  if(Array.isArray(value)){
+    return value.map(stripUndefinedDeep);
+  }
+  if(value && typeof value === 'object' && !(value instanceof Date)){
+    const out = {};
+    Object.keys(value).forEach(key=>{
+      const v = value[key];
+      out[key] = (v === undefined) ? null : stripUndefinedDeep(v);
+    });
+    return out;
+  }
+  return value;
+}
+
 function fbSaveOne(collectionName, item){
+  item = stripUndefinedDeep(item);
   return fbDb.collection(collectionName).doc(String(item.id)).set(item).catch(err=>{
     console.error(collectionName + ' save failed', err);
     if(typeof toast === 'function') toast('Save failed: ' + (err.message || err.code || 'unknown error'));
@@ -780,7 +797,7 @@ async function fbFullResyncPieces(pieces){
     for(let i=0; i<pieces.length; i+=chunkSize){
       const batch = fbDb.batch();
       pieces.slice(i, i+chunkSize).forEach(p=>{
-        batch.set(fbDb.collection('pieces').doc(String(p.id)), p);
+        batch.set(fbDb.collection('pieces').doc(String(p.id)), stripUndefinedDeep(p));
       });
       await batch.commit();
     }
@@ -2532,9 +2549,17 @@ async function buildShareSnapshot(c){
       fbSavePiece(p);
     }
     result.push({
-      id: p.id, nome: p.nome, codigo: p.codigo, numero: p.numero, img: p.img, img2: p.img2,
-      valor_venda: cp.valor_venda || p.valor_final, hipoalergenico: cp.hipoalergenico || p.materiais,
-      garantia: cp.garantia, documents: cp.documents||[], order: cp.order||''
+      id: p.id ?? '',
+      nome: p.nome ?? '',
+      codigo: p.codigo ?? '',
+      numero: p.numero ?? '',
+      img: p.img ?? '',
+      img2: p.img2 ?? '',
+      valor_venda: (cp.valor_venda || p.valor_final) ?? '',
+      hipoalergenico: (cp.hipoalergenico || p.materiais) ?? '',
+      garantia: cp.garantia ?? '',
+      documents: cp.documents || [],
+      order: cp.order || ''
     });
   }
   return result;
